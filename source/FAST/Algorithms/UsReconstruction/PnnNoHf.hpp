@@ -10,23 +10,31 @@ namespace fast {
 class PnnNoHf : public ProcessObject {
     FAST_OBJECT(PnnNoHf)
     public:
-        void setMaskSize(unsigned char maskSize);
-        void setStandardDeviation(float stdDev);
+        //void setMaskSize(unsigned char maskSize);
+        //void setStandardDeviation(float stdDev);
         void setOutputType(DataType type);
         ~PnnNoHf();
     private:
         PnnNoHf();
         void execute();
         void waitToFinish();
-        void createMask(Image::pointer input, uchar maskSize, bool useSeperableFilter);
-        void recompileOpenCLCode(Image::pointer input);
+        void initVolumeCube(Image::pointer input);
+        //void createMask(Image::pointer input, uchar maskSize, bool useSeperableFilter);
+        //void recompileOpenCLCode(Image::pointer input);
 
-        char mMaskSize;
-        float mStdDev;
+        //char mMaskSize;
+        //float mStdDev;
+        float dv; //resolution?
+        float Rmax;
+        bool volumeInitialized;
+        
+        float * VoxelValues;
+        float * VoxelWeights;
+
 
         cl::Buffer mCLMask;
-        float * mMask;
-        bool mRecreateMask;
+        //float * mMask;
+        //bool mRecreateMask;
 
         cl::Kernel mKernel;
         unsigned char mDimensionCLCodeCompiledFor;

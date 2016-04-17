@@ -18,6 +18,11 @@ PnnNoHf::PnnNoHf(){
     //--// store different compiled for settings (dimension/variables...)
     mIsModified = true; // needed?
     mOutputTypeSet = false;
+
+    //volume;
+    dv = 1;
+    Rmax = 3; //2?
+    volumeInitialized = false;
 }
 
 PnnNoHf::~PnnNoHf(){
@@ -28,6 +33,10 @@ PnnNoHf::~PnnNoHf(){
 
 // CPU algoritme
 template <class T>
+void executeAlgorithmOnHost(Image::pointer input, Image::pointer output){
+
+}
+/*
 void executeAlgorithmOnHost(Image::pointer input, Image::pointer output, float * mask, unsigned char maskSize) {
     // TODO: this method currently only processes the first component
     unsigned int nrOfComponents = input->getNrOfComponents();
@@ -90,12 +99,40 @@ void executeAlgorithmOnHost(Image::pointer input, Image::pointer output, float *
             }
         }
     }
-}
+}*/
 
 void PnnNoHf::execute() {
-    Image::pointer input = getStaticInputData<Image>(0);
-    Image::pointer output = getStaticOutputData<Image>(0); //dynamic
+    Image::pointer input = getInputData(0);//getStaticInputData<Image>(0);
+    /*if (input->getDimension() != 2){
+        throw Exception("The algorithm only handles 2D image input");
+    }*/
 
+    Image::pointer output = getStaticOutputData<Image>(0);
+    //output->setDimension(3);
+
+    if (!volumeInitialized){
+        //Init cube with all corners
+        initVolumeCube(input);
+        //Definer dv (oppløsning)
+        dv = 1;
+    }
+
+    switch (input->getDataType()) {
+        fastSwitchTypeMacro(executeAlgorithmOnHost<FAST_TYPE>(input, output));
+    }
+
+    /*if (device->isHost()){
+        switch (input->getDataType()) {
+            fastSwitchTypeMacro(executeAlgorithmOnHost<FAST_TYPE>(input, output, mMask, maskSize));
+        }
+    }
+    else{
+        switch (input->getDataType()) {
+            fastSwitchTypeMacro(executeAlgorithmOnHost<FAST_TYPE>(input, output, mMask, maskSize));
+        }
+    }*/
+
+    /*
     char maskSize = mMaskSize;
     if (maskSize <= 0) // If mask size is not set calculate it instead
         maskSize = ceil(2 * mStdDev) * 2 + 1;
@@ -203,7 +240,33 @@ void PnnNoHf::execute() {
 
 
         }
-    }
+    }*/
+}
+
+void PnnNoHf::initVolumeCube(Image::pointer input){
+    bool dynData = input->isDynamicData();
+    std::cout << "Is dynamic?" << dynData << std::endl;
+
+    BoundingBox bb = input->getBoundingBox();
+    std::cout << "Bounding box" << bb << std::endl;
+
+    uint comps = input->getNrOfComponents();
+    std::cout << "Components" << comps << std::endl;
+
+    Vector3ui size = input->getSize();
+    std::cout << "Size" << size << std::endl;
+    //Vector3ui spacing = input->getSpacing();
+    //std::cout << "Spacing" << spacing << std::endl;
+    Streamer::pointer stream = input->getStreamer();
+    std::cout << "Stream " << stream << std::endl;
+    //uint nrOfFrames = stream->getNrOfFrames();
+    //std::cout << "StreamNR " << nrOfFrames << std::endl;
+
+    //std::cout << "Stream1 " << stream->getNrOfFrames() << std::endl;
+    //std::cout << "Stream2 " << stream->getStreamingMode() << std::endl;
+    //std::cout << "Stream3 " << stream->hasReachedEnd() << std::endl;
+    //std::cout << "Stream4 " << stream->producerStream() << std::endl;
+    //calculate dv?
 }
 
 void PnnNoHf::waitToFinish() {
@@ -214,7 +277,7 @@ void PnnNoHf::waitToFinish() {
 }
 
 // ########################
-
+/*
 void GaussianSmoothingFilter::setMaskSize(unsigned char maskSize) {
     if(maskSize <= 0)
         throw Exception("Mask size of GaussianSmoothingFilter can't be less than 0.");
@@ -406,6 +469,7 @@ void executeAlgorithmOnHost(Image::pointer input, Image::pointer output, float *
             outputData[x*nrOfComponents+y*nrOfComponents*width] = (T)sum;
         }}
     }
-}
+    
+}*/
 
 

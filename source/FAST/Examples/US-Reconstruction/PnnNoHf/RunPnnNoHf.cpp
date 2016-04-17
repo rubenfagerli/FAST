@@ -5,8 +5,10 @@
  */
 #include "FAST/Streamers/ImageFileStreamer.hpp"
 #include "FAST/Visualization/ImageRenderer/ImageRenderer.hpp"
+#include "FAST/Visualization/VolumeRenderer/VolumeRenderer.hpp"
 #include "FAST/Visualization/SimpleWindow.hpp"
 #include "FAST/TestDataPath.hpp"
+#include "FAST/Algorithms/UsReconstruction/PnnNoHf.hpp"
 
 using namespace fast;
 
@@ -20,15 +22,20 @@ int main() {
     std::string folder = "/rekonstruksjons_data/US_01_20130529T084519/";
     std::string nameformat = "US_01_20130529T084519_ScanConverted_#.mhd";
     
-    //streamer->setStreamingMode(STREAMING_MODE_PROCESS_ALL_FRAMES);
+    streamer->setStreamingMode(STREAMING_MODE_PROCESS_ALL_FRAMES);
     streamer->setFilenameFormat(std::string(FAST_TEST_DATA_DIR)+folder+nameformat);
 
+    // Reconstruction PNN
+    PnnNoHf::pointer pnn = PnnNoHf::New();
+    pnn->setInputConnection(streamer->getOutputPort());
+
     // Renderer image
-    ImageRenderer::pointer renderer = ImageRenderer::New();
-    renderer->addInputConnection(streamer->getOutputPort());
+    VolumeRenderer::pointer renderer = VolumeRenderer::New();
+    //ImageRenderer::pointer renderer = ImageRenderer::New();
+    renderer->addInputConnection(pnn->getOutputPort());
     SimpleWindow::pointer window = SimpleWindow::New();
     window->addRenderer(renderer);
-    window->set2DMode();
+    //window->set2DMode();
     window->setTimeout(5*1000); // automatically close window after 5 seconds
     window->start();
 }
