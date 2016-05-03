@@ -23,18 +23,24 @@ int main() {
     std::string nameformat = "US_01_20130529T084519_ScanConverted_#.mhd";
     
     streamer->setStreamingMode(STREAMING_MODE_PROCESS_ALL_FRAMES);
+    //streamer->setStreamingMode(STREAMING_MODE_STORE_ALL_FRAMES);
     streamer->setFilenameFormat(std::string(FAST_TEST_DATA_DIR)+folder+nameformat);
+    std::cout << "Nr of frames" << streamer->getNrOfFrames() << std::endl;
 
     // Reconstruction PNN
     PnnNoHf::pointer pnn = PnnNoHf::New();
     pnn->setInputConnection(streamer->getOutputPort());
 
-    // Renderer image
-    VolumeRenderer::pointer renderer = VolumeRenderer::New();
+    //Alt for now, display image
+    ImageRenderer::pointer imageRenderer = ImageRenderer::New();
+    imageRenderer->addInputConnection(pnn->getOutputPort());
+
+    // Renderer volume
+    //VolumeRenderer::pointer renderer = VolumeRenderer::New();
     //ImageRenderer::pointer renderer = ImageRenderer::New();
-    renderer->addInputConnection(pnn->getOutputPort());
+    //renderer->addInputConnection(pnn->getOutputPort());
     SimpleWindow::pointer window = SimpleWindow::New();
-    window->addRenderer(renderer);
+    window->addRenderer(imageRenderer);//renderer);
     //window->set2DMode();
     window->setTimeout(5*1000); // automatically close window after 5 seconds
     window->start();

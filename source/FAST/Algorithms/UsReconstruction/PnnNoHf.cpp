@@ -23,6 +23,8 @@ PnnNoHf::PnnNoHf(){
     dv = 1;
     Rmax = 3; //2?
     volumeInitialized = false;
+    firstFrameNotSet = true;
+    frameList = {};
 }
 
 PnnNoHf::~PnnNoHf(){
@@ -102,24 +104,111 @@ void executeAlgorithmOnHost(Image::pointer input, Image::pointer output, float *
 }*/
 
 void PnnNoHf::execute() {
-    Image::pointer input = getInputData(0);//getStaticInputData<Image>(0);
+    //Image::pointer input = getStaticInputData<Image>(0);
+
+    Image::pointer frame = getStaticInputData<Image>(0);
+    Image::pointer output = getStaticOutputData<Image>(0);
+    output->createFromImage(frame);
+    if (firstFrameNotSet){
+        firstFrame = frame;
+        frameList.push_back(frame);
+        firstFrameNotSet = false;
+
+        /*DynamicData::pointer dynamicData = getInputData(0);
+        dynamicData->registerConsumer(this);
+
+        firstFrame = dynamicData->getNextFrame(this);
+        frameList.push_back(firstFrame);
+        output->createFromImage(firstFrame);
+
+        while (!dynamicData->hasReachedEnd()){
+            Image::pointer nextFrame = dynamicData->getNextFrame(this);
+            frameList.push_back(nextFrame);
+        }
+
+        if (!volumeInitialized){
+            std::cout << "INITIALIZING volume" << std::endl;
+            //Init cube with all corners
+            initVolumeCube(firstFrame);
+            volumeInitialized = true;
+            //Definer dv (oppløsning)
+            dv = 1;
+        }
+        switch (firstFrame->getDataType()) {
+            fastSwitchTypeMacro(executeAlgorithmOnHost<FAST_TYPE>(firstFrame, output));
+        }*/
+            
+        //output = firstFrame;
+        /*IMAGE constructors
+        void create(VectorXui size, DataType type, uint nrOfComponents);
+        void create(uint width, uint height, uint depth, DataType type, uint nrOfComponents);
+        void create(VectorXui size, DataType type, uint nrOfComponents, ExecutionDevice::pointer device, const void * data);
+        void create(uint width, uint height, uint depth, DataType type, uint nrOfComponents, ExecutionDevice::pointer device, const void * data);
+        */
+        //frame->getNrOfComponents;
+        //frame->getDataType();
+        //Image::pointer output = getStaticOutputData<Image>();
+        //output->create(input->getSize(), TYPE_FLOAT, input->getNrOfComponents());
+        
+        /*
+        output = getStaticOutputData<Image>();
+        DataType type = DataType::TYPE_INT8; //frame->getDataType();
+        uint size = 32;
+        int initVal = 1;
+        output->create(size, size, size, type, 2);// create(500, 500, 500, frame->getDataType(), 2);
+        ImageAccess::pointer imgAccess = output->getImageAccess(accessType::ACCESS_READ_WRITE);
+        for (int x = 0; x < size; x++){
+            for (int y = 0; y < size; y++){
+                for (int z = 0; z < size; z++){
+                    imgAccess->setScalar((x, y, z), initVal, 0); //Channel 1 - Value
+                    imgAccess->setScalar((x, y, z), initVal, 1); //Channel 2 - Weight
+
+                    //imgAccess->setVector(Eigen::Vector3i(x, y, z), Eigen::Vector2i(0, 0)); // Eventuelt Vector2f etc
+                }
+            }
+        }
+        imgAccess->release();
+        std::cout << "MAX intensity" << output->calculateMaximumIntensity() << std::endl;
+        */
+
+        //output->setSpacing(TODO);
+    }
+    // Lagre frame i PO, f.eks. i en std::vector
+    
+    
+    
+    
+    frameList.push_back(frame);
+
+    //Image::pointer output = getStaticOutputData<Image>();
+    //output->create(256, 256, 256, frame->getDataType(), 2);
+    // Sjekk om vi har nådd slutten
+    DynamicData::pointer dynamicImage = getInputData(0);
+    //dynamicImage->
+    if (dynamicImage->hasReachedEnd()) {
+        //Image::pointer output = getStaticOutputData<Image>(0);
+        // Do reconstruction
+        
+        //output->setDimension(3);
+
+        if (!volumeInitialized){
+            std::cout << "INITIALIZING volume" << std::endl;
+            //Init cube with all corners
+            initVolumeCube(firstFrame);
+            volumeInitialized = true;
+            //Definer dv (oppløsning)
+            dv = 1;
+        }
+        switch (frame->getDataType()) {
+            fastSwitchTypeMacro(executeAlgorithmOnHost<FAST_TYPE>(frame, output));
+        }
+    }
+        //getInputData(0);//getStaticInputData<Image>(0);
     /*if (input->getDimension() != 2){
         throw Exception("The algorithm only handles 2D image input");
     }*/
-
-    Image::pointer output = getStaticOutputData<Image>(0);
-    //output->setDimension(3);
-
-    if (!volumeInitialized){
-        //Init cube with all corners
-        initVolumeCube(input);
-        //Definer dv (oppløsning)
-        dv = 1;
-    }
-
-    switch (input->getDataType()) {
-        fastSwitchTypeMacro(executeAlgorithmOnHost<FAST_TYPE>(input, output));
-    }
+    //if (dynamicImage->)
+    
 
     /*if (device->isHost()){
         switch (input->getDataType()) {

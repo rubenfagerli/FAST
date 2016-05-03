@@ -27,7 +27,12 @@ class PnnNoHf : public ProcessObject {
         float dv; //resolution?
         float Rmax;
         bool volumeInitialized;
+        Image::pointer firstFrame;
+        Image::pointer output;
+        bool firstFrameNotSet;
         
+        std::vector<Image::pointer> frameList;
+        Image::pointer VoxelsValNWeight;
         float * VoxelValues;
         float * VoxelWeights;
 
