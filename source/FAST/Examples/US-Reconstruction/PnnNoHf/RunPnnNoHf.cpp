@@ -25,6 +25,7 @@ int main() {
     streamer->setStreamingMode(STREAMING_MODE_PROCESS_ALL_FRAMES);
     //streamer->setStreamingMode(STREAMING_MODE_STORE_ALL_FRAMES);
     streamer->setFilenameFormat(std::string(FAST_TEST_DATA_DIR)+folder+nameformat);
+    streamer->setMaximumNumberOfFrames(200);
     std::cout << "Nr of frames" << streamer->getNrOfFrames() << std::endl;
 
     // Reconstruction PNN
@@ -41,6 +42,7 @@ int main() {
     //renderer->addInputConnection(pnn->getOutputPort());
     SimpleWindow::pointer window = SimpleWindow::New();
     window->addRenderer(imageRenderer);//renderer);
+    //window->setMaximumFramerate(10); //unngå at buffer går tomt?
     //window->set2DMode();
     window->setTimeout(5*1000); // automatically close window after 5 seconds
     window->start();

@@ -111,7 +111,7 @@ void PnnNoHf::execute() {
     output->createFromImage(frame);
     if (firstFrameNotSet){
         firstFrame = frame;
-        frameList.push_back(frame);
+        //frameList.push_back(frame);
         firstFrameNotSet = false;
 
         /*DynamicData::pointer dynamicData = getInputData(0);
@@ -202,6 +202,9 @@ void PnnNoHf::execute() {
         switch (frame->getDataType()) {
             fastSwitchTypeMacro(executeAlgorithmOnHost<FAST_TYPE>(frame, output));
         }
+    }
+    else{// if (dynamicImage->getSize() == 0){
+        std::cout << "DynImg size" << dynamicImage->getSize() << std::endl;
     }
         //getInputData(0);//getStaticInputData<Image>(0);
     /*if (input->getDimension() != 2){

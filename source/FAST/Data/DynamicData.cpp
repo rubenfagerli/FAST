@@ -1,5 +1,6 @@
 #include "DynamicData.hpp"
 #include "FAST/ProcessObject.hpp"
+#include <stdlib.h>     //for using the function sleep
 
 namespace fast {
 
@@ -181,6 +182,11 @@ DataObject::pointer DynamicData::getNextFrame(WeakPointer<Object> processObject)
         } else {
             // All frames are gone, make sure timestamps that all POs have are up to date
             setAllConsumersUpToDate();
+            //TODO add something here? A wait to wait for new frames?
+            if (!(streamer->hasReachedEnd())){
+                //Consumers wait
+                Sleep(10); //WINDOWS specific
+            }
         }
     } else if(streamer->getStreamingMode() == STREAMING_MODE_NEWEST_FRAME_ONLY) {
         // With newest frame only, always remove?
