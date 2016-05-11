@@ -181,11 +181,15 @@ DataObject::pointer DynamicData::getNextFrame(WeakPointer<Object> processObject)
             }
         } else {
             // All frames are gone, make sure timestamps that all POs have are up to date
-            setAllConsumersUpToDate();
+            //setAllConsumersUpToDate();
             //TODO add something here? A wait to wait for new frames?
             if (!(streamer->hasReachedEnd())){
                 //Consumers wait
-                Sleep(10); //WINDOWS specific
+                ///Sleep(10); //WINDOWS specific
+                //WaitForInputIdle(HANDLE hprocess, 100ms);
+            }
+            else{
+                setAllConsumersUpToDate();
             }
         }
     } else if(streamer->getStreamingMode() == STREAMING_MODE_NEWEST_FRAME_ONLY) {
