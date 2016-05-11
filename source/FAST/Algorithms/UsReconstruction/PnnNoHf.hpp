@@ -35,6 +35,7 @@ class PnnNoHf : public ProcessObject {
         Image::pointer VoxelsValNWeight;
         float * VoxelValues;
         float * VoxelWeights;
+        Vector3f zeroPoints;
 
 
         cl::Buffer mCLMask;

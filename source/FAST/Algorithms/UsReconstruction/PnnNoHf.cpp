@@ -25,6 +25,7 @@ PnnNoHf::PnnNoHf(){
     volumeInitialized = false;
     firstFrameNotSet = true;
     frameList = {};
+    //frameList.capacity = 1000;
 }
 
 PnnNoHf::~PnnNoHf(){
@@ -33,10 +34,46 @@ PnnNoHf::~PnnNoHf(){
 
 //void PnnNoHf::recompileOpenCLCode(Image::pointer input) {
 
+Vector3f getImagePlaneNormal(Image::pointer frame){
+    AffineTransformation::pointer imageTransformation = SceneGraph::getAffineTransformationFromData(frame);
+    Vector3f p0 = imageTransformation->multiply(Vector3f(0, 0, 0));
+    Vector3f p1 = imageTransformation->multiply(Vector3f(1, 0, 0));
+    Vector3f p2 = imageTransformation->multiply(Vector3f(0, 1, 0));
+    Vector3f imagePlaneNormal = (p1 - p0).cross(p2 - p0);
+    imagePlaneNormal.normalize();
+    return imagePlaneNormal;
+}
+
 // CPU algoritme
 template <class T>
 void executeAlgorithmOnHost(Image::pointer input, Image::pointer output){
+    ImageAccess::pointer volAccess = VoxelsValNWeight->getImageAccess(ACCESS_READ_WRITE);
+    Image::pointer lastFrame = None;
+    while (!frameList.empty()){
+        Image::pointer frame = frameList.back();
+        frameList.pop_back();
+        //zeroPoints
+        // # Finn dominerende rettning #
+        Vector3f imagePlaneNormal = getImagePlaneNormal(frame);
+        float domVal = imagePlaneNormal(0); int domDir = 0
+        if (imagePlaneNormal(1) > domDir) domVal = imagePlaneNormal(1); domDir = 1;
+        if (imagePlaneNormal(2) > domDir) domVal = imagePlaneNormal(2); domDir = 2;
+        // TODO adjust for or compare to output volume direction
 
+        // # Go through output volume #
+        ImageAccess::pointer frameAccess = frame->getImageAccess(ACCESS_READ);
+        if (!frameList.empty()){ Image::pointer next = frameList.back(); }
+
+
+        for (int x = 0; x < frame.getWidth(); x++){
+            for (int y = 0; y < frame.getHeight(); y++){
+                //Find thickness according to last and next frame along the imagePlaneNormal
+                float maxNeighDist = max(d1, d2);
+                float df = min(max(maxNeighDist, dv), Rmax);
+                float dfz = df / domVal;
+            }
+        }
+    }
 }
 /*
 void executeAlgorithmOnHost(Image::pointer input, Image::pointer output, float * mask, unsigned char maskSize) {
@@ -107,8 +144,10 @@ void PnnNoHf::execute() {
     //Image::pointer input = getStaticInputData<Image>(0);
 
     Image::pointer frame = getStaticInputData<Image>(0);
-    Image::pointer output = getStaticOutputData<Image>(0);
-    output->createFromImage(frame);
+    //Image::pointer output = getStaticOutputData<Image>(0);
+    //output->createFromImage(frame);
+    //setStaticOutputData<Image>(0, frame);
+    //return;
     if (firstFrameNotSet){
         firstFrame = frame;
         //frameList.push_back(frame);
@@ -150,36 +189,40 @@ void PnnNoHf::execute() {
         //Image::pointer output = getStaticOutputData<Image>();
         //output->create(input->getSize(), TYPE_FLOAT, input->getNrOfComponents());
         
-        /*
-        output = getStaticOutputData<Image>();
+        
+        output = getStaticOutputData<Image>(0);
         DataType type = DataType::TYPE_INT8; //frame->getDataType();
         uint size = 32;
         int initVal = 1;
-        output->create(size, size, size, type, 2);// create(500, 500, 500, frame->getDataType(), 2);
+        output->create(size, size, size, type, 1);// create(500, 500, 500, frame->getDataType(), 2);
         ImageAccess::pointer imgAccess = output->getImageAccess(accessType::ACCESS_READ_WRITE);
+        ImageAccess::pointer inpAccess = frame->getImageAccess(accessType::ACCESS_READ);
         for (int x = 0; x < size; x++){
             for (int y = 0; y < size; y++){
+                int thisVal = inpAccess->getScalar((x, y), 0);
                 for (int z = 0; z < size; z++){
-                    imgAccess->setScalar((x, y, z), initVal, 0); //Channel 1 - Value
-                    imgAccess->setScalar((x, y, z), initVal, 1); //Channel 2 - Weight
+                    //imgAccess->setScalar((x, y, z), initVal, 0); //Channel 1 - Value
+                    //imgAccess->setScalar((x, y, z), initVal, 1); //Channel 2 - Weight
+                    imgAccess->setScalar((x, y, z), thisVal, 0);
 
                     //imgAccess->setVector(Eigen::Vector3i(x, y, z), Eigen::Vector2i(0, 0)); // Eventuelt Vector2f etc
                 }
             }
         }
         imgAccess->release();
+        inpAccess->release();
         std::cout << "MAX intensity" << output->calculateMaximumIntensity() << std::endl;
-        */
+        
+        //setStaticOutputData<Image>(0, output);
 
         //output->setSpacing(TODO);
     }
     // Lagre frame i PO, f.eks. i en std::vector
     
-    
-    
-    
+    setStaticOutputData<Image>(0, output);
+     
     frameList.push_back(frame);
-
+    
     //Image::pointer output = getStaticOutputData<Image>();
     //output->create(256, 256, 256, frame->getDataType(), 2);
     // Sjekk om vi har nådd slutten
@@ -212,7 +255,7 @@ void PnnNoHf::execute() {
     }*/
     //if (dynamicImage->)
     
-
+    return;
     /*if (device->isHost()){
         switch (input->getDataType()) {
             fastSwitchTypeMacro(executeAlgorithmOnHost<FAST_TYPE>(input, output, mMask, maskSize));
@@ -335,7 +378,8 @@ void PnnNoHf::execute() {
     }*/
 }
 
-void PnnNoHf::initVolumeCube(Image::pointer input){
+void PnnNoHf::initVolumeCube(Image::pointer rootFrame){
+    /*
     bool dynData = input->isDynamicData();
     std::cout << "Is dynamic?" << dynData << std::endl;
 
@@ -352,13 +396,91 @@ void PnnNoHf::initVolumeCube(Image::pointer input){
     Streamer::pointer stream = input->getStreamer();
     std::cout << "Stream " << stream << std::endl;
     //uint nrOfFrames = stream->getNrOfFrames();
-    //std::cout << "StreamNR " << nrOfFrames << std::endl;
+    */
+    // Calculate image plane normal
+    AffineTransformation::pointer imageTransformation = SceneGraph::getAffineTransformationFromData(rootFrame);
+    Vector3f p0 = imageTransformation->multiply(Vector3f(0, 0, 0));
+    Vector3f p1 = imageTransformation->multiply(Vector3f(1, 0, 0));
+    Vector3f p2 = imageTransformation->multiply(Vector3f(0, 1, 0));
+    Vector3f imagePlaneNormal = (p1 - p0).cross(p2 - p0);
+    imagePlaneNormal.normalize();
+    
+    // Define zero point
+    BoundingBox rootBB = rootFrame->getBoundingBox();
+    uint width = rootFrame->getWidth();
+    uint height = rootFrame->getHeight();
+    uint components = rootFrame->getNrOfComponents();
+    BoundingBox rootBBtrans = rootFrame->getTransformedBoundingBox();
+    Eigen::Vector3f spacings = rootFrame->getSpacing();    
 
-    //std::cout << "Stream1 " << stream->getNrOfFrames() << std::endl;
-    //std::cout << "Stream2 " << stream->getStreamingMode() << std::endl;
-    //std::cout << "Stream3 " << stream->hasReachedEnd() << std::endl;
-    //std::cout << "Stream4 " << stream->producerStream() << std::endl;
+    Eigen::MatrixXf rootCorners = rootBB.getCorners();
+    Eigen::MatrixXf rootBBtransCorners = rootBBtrans.getCorners();
+
+    //Eigen::Vector3f cornerOne = rootCorners(0);
+    std::vector<Eigen::Vector3f> points = {};
+    for (int i = 0; i < 8; i++){
+        Eigen::Vector3f corner(rootCorners(i, 0), rootCorners(i, 1), rootCorners(i, 2));
+        Eigen::Vector3f cornerTrans(rootBBtransCorners(i, 0), rootBBtransCorners(i, 1), rootBBtransCorners(i, 2));
+        points.push_back(cornerTrans);
+    }
+
+    // BIG TODO
+        // Find transform from rootFrame to normalized space
+        // Use this transform to transform all frames
+    
+    Vector3f min, max;
+    //Vector3f centroid;
+    //BoundingBox box = rootFrame->getBoundingBox();
+    BoundingBox box = rootFrame->getTransformedBoundingBox();
+    MatrixXf corners = box.getCorners();
+    Vector3f corner = box.getCorners().row(0);
+    min[0] = corner[0];
+    max[0] = corner[0];
+    min[1] = corner[1];
+    max[1] = corner[1];
+    min[2] = corner[2];
+    max[2] = corner[2];
+   
+    
+    for (int i = 0; i < frameList.size(); i++){
+        BoundingBox box = frameList[i]->getTransformedBoundingBox();
+        MatrixXf corners = box.getCorners();
+        for (int j = 0; j < 8; j++) {
+            for (uint k = 0; k < 3; k++) {
+                float point = corners(j, k);
+                if (point < min[k]) //corners(j, k) < min[k])
+                    min[k] = point;
+                if (point > max[k])
+                    max[k] = point;
+            }
+        }
+    }
+    
+
+    // Calculate directions relative in this one
+    //  - x: horizontal; y: vertical in img; z: (0) in all of rootFrame
+
+    // Init volume
+    Vector3f size = max - min;
+    zeroPoints = min;
+    DataType type = DataType::TYPE_INT8; //frame->getDataType();
+    int initVal = 0.0;
+    VoxelsValNWeight->create(size, type, 2);
+    ImageAccess::pointer volAccess = VoxelsValNWeight->getImageAccess(accessType::ACCESS_READ_WRITE);
+    for (int x = 0; x < size[0]; x++){
+        for (int y = 0; y < size[0]; y++){
+            for (int z = 0; z < size[0]; z++){
+                volAccess->setScalar((x, y, z), initVal, 0); //Channel 1 - Value
+                volAccess->setScalar((x, y, z), initVal, 1); //Channel 2 - Weight
+
+                //imgAccess->setVector(Eigen::Vector3i(x, y, z), Eigen::Vector2i(0, 0)); // Eventuelt Vector2f etc
+            }
+        }
+    }
+    volAccess->release();
+
     //calculate dv?
+    int drrrrrrrr = 1;
 }
 
 void PnnNoHf::waitToFinish() {

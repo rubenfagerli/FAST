@@ -25,7 +25,10 @@ int main() {
     streamer->setStreamingMode(STREAMING_MODE_PROCESS_ALL_FRAMES);
     //streamer->setStreamingMode(STREAMING_MODE_STORE_ALL_FRAMES);
     streamer->setFilenameFormat(std::string(FAST_TEST_DATA_DIR)+folder+nameformat);
-    streamer->setMaximumNumberOfFrames(200);
+    //streamer->setMaximumNumberOfFrames(746); //746 total
+    streamer->setStartNumber(200);
+    //streamer->setStepSize(2);
+    //streamer->enableLooping();
     std::cout << "Nr of frames" << streamer->getNrOfFrames() << std::endl;
 
     // Reconstruction PNN
@@ -34,14 +37,23 @@ int main() {
 
     //Alt for now, display image
     ImageRenderer::pointer imageRenderer = ImageRenderer::New();
-    imageRenderer->addInputConnection(pnn->getOutputPort());
+    //imageRenderer->addInputConnection(pnn->getOutputPort()); //streamer
 
     // Renderer volume
-    //VolumeRenderer::pointer renderer = VolumeRenderer::New();
-    //ImageRenderer::pointer renderer = ImageRenderer::New();
-    //renderer->addInputConnection(pnn->getOutputPort());
+    VolumeRenderer::pointer volumeRenderer = VolumeRenderer::New();
+    volumeRenderer->addInputConnection(pnn->getOutputPort());
+    OpacityTransferFunction::pointer otf = OpacityTransferFunction::New();
+    otf->addAlphaPoint(0.0, 0.0);
+    otf->addAlphaPoint(1.0, 0.5);
+    ColorTransferFunction::pointer ctf = ColorTransferFunction::New();
+    ctf->addRGBPoint(0.0, 0, 1, 0);
+    ctf->addRGBPoint(1.0, 1, 0, 0);
+    
+    volumeRenderer->setColorTransferFunction(0, ctf);
+    volumeRenderer->setOpacityTransferFunction(0, otf);
+
     SimpleWindow::pointer window = SimpleWindow::New();
-    window->addRenderer(imageRenderer);//renderer);
+    window->addRenderer(volumeRenderer);//renderer);
     //window->setMaximumFramerate(10); //unngå at buffer går tomt?
     //window->set2DMode();
     window->setTimeout(5*1000); // automatically close window after 5 seconds
