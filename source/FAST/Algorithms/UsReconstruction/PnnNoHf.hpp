@@ -37,6 +37,7 @@ class PnnNoHf : public ProcessObject {
         float * VoxelValues;
         float * VoxelWeights;
         Vector3f zeroPoints;
+        Vector3f volumeSize;
 
 
         cl::Buffer mCLMask;

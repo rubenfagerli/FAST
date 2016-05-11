@@ -48,53 +48,104 @@ Vector3f getImagePlaneNormal(Image::pointer frame){
 //template <class T>
 void PnnNoHf::executeAlgorithmOnHost(){//Image::pointer VoxelsValNWeight, Image::pointer output, std::vector<Image::pointer> frameList, float dv, float Rmax){
     //VoxelsValNWeight = Image::pointer::New();
-    ImageAccess::pointer volAccess = VoxelsValNWeight->getImageAccess(ACCESS_READ_WRITE);
+    std::cout << "Started executing on host!" << std::endl;
+    ImageAccess::pointer volAccess = VoxelsValNWeight->getImageAccess(accessType::ACCESS_READ_WRITE);
+    for (int x = 0; x < 5; x++){
+        for (int y = 0; y < 5; y++){
+            for (int z = 0; z < 5; z++){
+                Vector3i position = Vector3i(x, y, z);
+                float voxelValue0 = volAccess->getScalar(position, 0);
+                float voxelValue1 = volAccess->getScalar(position, 1);
+            }
+        }
+    }
     //Image::pointer lastFrame = none;
     for (int i = 0; i < frameList.size(); i++){
         Image::pointer frame = frameList[i];
         //zeroPoints
         // # Finn dominerende rettning #
         Vector3f imagePlaneNormal = getImagePlaneNormal(frame);
-        float domVal = imagePlaneNormal(0); int domDir = 0;
-        if (imagePlaneNormal(1) > domDir) domVal = imagePlaneNormal(1); domDir = 1;
-        if (imagePlaneNormal(2) > domDir) domVal = imagePlaneNormal(2); domDir = 2;
+        float domVal = fabs(imagePlaneNormal(0)); //TODO do we have to take ABS of value here? Does the + vs - direction matter?
+        int domDir = 0;
+        if (fabs(imagePlaneNormal(1)) > domVal){
+            domVal = fabs(imagePlaneNormal(1));
+            domDir = 1;
+        }
+        if (fabs(imagePlaneNormal(2)) > domVal) {
+            domVal = fabs(imagePlaneNormal(2));
+            domDir = 2; 
+        }
         // TODO adjust for or compare to output volume direction
 
         // # Go through output volume #
-        ImageAccess::pointer frameAccess = frame->getImageAccess(ACCESS_READ);
+        ImageAccess::pointer frameAccess = frame->getImageAccess(accessType::ACCESS_READ);
         Image::pointer last;
         Image::pointer next;
-        if (i != 0) { last = frameList[i - 1]; }
+        if (i != 0) { 
+            last = frameList[i - 1]; 
+        }
         //if (!frameList.empty()){ Image::pointer next = frameList.back(); }
-        if (i < frameList.size()-1 ) { next = frameList[i + 1]; }
+        if (i < frameList.size()-1 ) { 
+            next = frameList[i + 1]; 
+        }
 
-        Vector3f baselocation = frame->getTransformedBoundingBox().getCorners().row(0); //corner 0
+        Vector3f baselocation = frame->getTransformedBoundingBox().getCorners().row(0); //corner 0 local values (0,0,0)
+        Vector3f adjustedBaseLocation = baselocation - zeroPoints;
         for (int x = 0; x < frame->getWidth(); x++){
             for (int y = 0; y < frame->getHeight(); y++){
                 //Find thickness according to last and next frame along the imagePlaneNormal
-                Vector3f location = baselocation + Vector3f(x, y, 0.0); // TODO make sure x, y is transformed
-                //todo: find dist
+                Vector3i location = Vector3i(x, y, 0); // TODO make sure x, y is transformed -> x/y need to be transformed now to reflect change in new coordinate system
+                location[0] += round(adjustedBaseLocation[0]); //use round instead? int() does cutoff 158.94 -> 158
+                location[1] += round(adjustedBaseLocation[1]);
+                location[2] += round(adjustedBaseLocation[2]);
+                Vector3ui volSize = VoxelsValNWeight->getSize();
+                if (location[0] >= VoxelsValNWeight->getWidth()){
+                    int abc = 0;
+                    continue;
+                }
+                if (location[1] >= VoxelsValNWeight->getHeight()){
+                    int abc = 0;
+                    continue;
+                }
+                if (location[2] >= VoxelsValNWeight->getDepth()){
+                    int abc = 0;
+                    continue;
+                }
+                //todo: find dist to LAST and NEXT
                 float d1 = 1.2; float d2 = 1.4;
                 //Calculate
                 float maxNeighDist = std::max(d1, d2);
                 float df = std::min(std::max(maxNeighDist, dv), Rmax);
-                float dfz = df / domVal;
+                float dfz = df / domVal; // TODO verify that deviding by domVal is correct (or 1/domval?)
 
                 //Find pixels in frames within thickness (2x dfz) in Z-direction
                 // for now just checking next and last TODO fix // These can also be limited outside the x/y for loop to show only frames within a certain distance from this frame (for instance using Rmax)
                 std::vector<Image::pointer> framesToCheck = {};
-                framesToCheck.push_back(last);
-                framesToCheck.push_back(next);
+                if (last.isValid()){
+                    framesToCheck.push_back(last);
+                }
+                if (next.isValid()){
+                    framesToCheck.push_back(next);
+                }
                 framesToCheck.push_back(frame);
-
+                
                 for (Image::pointer nFrame : framesToCheck){
                     // Given that frame has close enough pixels: Find pixel closest to point
-                    float p = nFrame->getImageAccess(ACCESS_READ)->getScalar((x,y), 0);
-                    float w = 1;
+                    ImageAccess::pointer nFrameAccess = nFrame->getImageAccess(accessType::ACCESS_READ);
+                    float p = nFrameAccess->getScalar((x, y), 0); //TODO actually find closest
+                    float w = 1; // w = 1-d/df
                     // Accumulate
-                    volAccess->setScalar(location, volAccess->getScalar(location, 0) + p, 0);
-                    volAccess->setScalar(location, volAccess->getScalar(location, 1) + w, 1);
+                    float oldP = volAccess->getScalar(location, 0);
+                    float oldW = volAccess->getScalar(location, 1);
+                    if (oldP < 0.0){ oldP = 0.0; } // Hacky workaround from -51.00 cells
+                    if (oldW < 0.0){ oldW = 0.0; }
+                    float newP = oldP + p;
+                    float newW = oldW + w;
+                    volAccess->setScalar(location, newP, 0);
+                    volAccess->setScalar(location, newW, 1);
+                    //TODO further add 3rd component for time?
                 }
+                
             }
         }
     }
@@ -102,29 +153,33 @@ void PnnNoHf::executeAlgorithmOnHost(){//Image::pointer VoxelsValNWeight, Image:
         Image::pointer frame = frameList.back();
         frameList.pop_back();
     }*/
-    
+    std::cout << "Calculating reconstructed volume!" << std::endl;
     // Finally, calculate reconstructed volume
+    output = getStaticOutputData<Image>(0);
     output->create(VoxelsValNWeight->getSize(), VoxelsValNWeight->getDataType(), 1);
     ImageAccess::pointer outAccess = output->getImageAccess(ACCESS_READ_WRITE);
     for (int x = 0; x < output->getWidth(); x++){
         for (int y = 0; y < output->getHeight(); y++){
             for (int z = 0; z < output->getDepth(); z++){
-                Vector3f location = Vector3f(x, y, z);
+                Vector3i location = Vector3i(x, y, z);
                 float P = volAccess->getScalar(location, 0);
                 float W = volAccess->getScalar(location, 1);
-                if (W != 0.0){
-                    outAccess->setScalar(location, (P / W), 0);
+                if (W > 0.0 && P >= 0.0){ // W != 0.0 to avoid division error
+                    float finalP = P / W;
+                    outAccess->setScalar(location, finalP, 0);
                 }
                 else{
-                    outAccess->setScalar(location, 0, 0);
+                    outAccess->setScalar(location, 0.0, 0);
                 }
             }
         }
     }
+    std::cout << "Volume reconstructed!" << std::endl;
     outAccess.release();
     volAccess.release();
 
-    setStaticOutputData<Image>(0, output);
+    //setStaticOutputData<Image>(0, output); //fails with this one?
+    std::cout << "Execute method finished succesfully!" << std::endl;
 }
 /*
 void executeAlgorithmOnHost(Image::pointer input, Image::pointer output, float * mask, unsigned char maskSize) {
@@ -191,245 +246,6 @@ void executeAlgorithmOnHost(Image::pointer input, Image::pointer output, float *
     }
 }*/
 
-void PnnNoHf::execute() {
-    //Image::pointer input = getStaticInputData<Image>(0);
-
-    Image::pointer frame = getStaticInputData<Image>(0);
-    //Image::pointer output = getStaticOutputData<Image>(0);
-    //output->createFromImage(frame);
-    //setStaticOutputData<Image>(0, frame);
-    //return;
-    if (firstFrameNotSet){
-        firstFrame = frame;
-        //frameList.push_back(frame);
-        firstFrameNotSet = false;
-
-        /*DynamicData::pointer dynamicData = getInputData(0);
-        dynamicData->registerConsumer(this);
-
-        firstFrame = dynamicData->getNextFrame(this);
-        frameList.push_back(firstFrame);
-        output->createFromImage(firstFrame);
-
-        while (!dynamicData->hasReachedEnd()){
-            Image::pointer nextFrame = dynamicData->getNextFrame(this);
-            frameList.push_back(nextFrame);
-        }
-
-        if (!volumeInitialized){
-            std::cout << "INITIALIZING volume" << std::endl;
-            //Init cube with all corners
-            initVolumeCube(firstFrame);
-            volumeInitialized = true;
-            //Definer dv (oppløsning)
-            dv = 1;
-        }
-        switch (firstFrame->getDataType()) {
-            fastSwitchTypeMacro(executeAlgorithmOnHost<FAST_TYPE>(firstFrame, output));
-        }*/
-            
-        //output = firstFrame;
-        /*IMAGE constructors
-        void create(VectorXui size, DataType type, uint nrOfComponents);
-        void create(uint width, uint height, uint depth, DataType type, uint nrOfComponents);
-        void create(VectorXui size, DataType type, uint nrOfComponents, ExecutionDevice::pointer device, const void * data);
-        void create(uint width, uint height, uint depth, DataType type, uint nrOfComponents, ExecutionDevice::pointer device, const void * data);
-        */
-        //frame->getNrOfComponents;
-        //frame->getDataType();
-        //Image::pointer output = getStaticOutputData<Image>();
-        //output->create(input->getSize(), TYPE_FLOAT, input->getNrOfComponents());
-        
-        
-        output = getStaticOutputData<Image>(0);
-        DataType type = DataType::TYPE_INT8; //frame->getDataType();
-        uint size = 32;
-        int initVal = 1;
-        output->create(size, size, size, type, 1);// create(500, 500, 500, frame->getDataType(), 2);
-        ImageAccess::pointer imgAccess = output->getImageAccess(accessType::ACCESS_READ_WRITE);
-        ImageAccess::pointer inpAccess = frame->getImageAccess(accessType::ACCESS_READ);
-        for (int x = 0; x < size; x++){
-            for (int y = 0; y < size; y++){
-                int thisVal = inpAccess->getScalar((x, y), 0);
-                for (int z = 0; z < size; z++){
-                    //imgAccess->setScalar((x, y, z), initVal, 0); //Channel 1 - Value
-                    //imgAccess->setScalar((x, y, z), initVal, 1); //Channel 2 - Weight
-                    imgAccess->setScalar((x, y, z), thisVal, 0);
-
-                    //imgAccess->setVector(Eigen::Vector3i(x, y, z), Eigen::Vector2i(0, 0)); // Eventuelt Vector2f etc
-                }
-            }
-        }
-        imgAccess->release();
-        inpAccess->release();
-        std::cout << "MAX intensity" << output->calculateMaximumIntensity() << std::endl;
-        
-        //setStaticOutputData<Image>(0, output);
-
-        //output->setSpacing(TODO);
-    }
-    // Lagre frame i PO, f.eks. i en std::vector
-    
-    setStaticOutputData<Image>(0, output);
-     
-    frameList.push_back(frame);
-    
-    //Image::pointer output = getStaticOutputData<Image>();
-    //output->create(256, 256, 256, frame->getDataType(), 2);
-    // Sjekk om vi har nådd slutten
-    DynamicData::pointer dynamicImage = getInputData(0);
-    //dynamicImage->
-    if (dynamicImage->hasReachedEnd()) {
-        //Image::pointer output = getStaticOutputData<Image>(0);
-        // Do reconstruction
-        
-        //output->setDimension(3);
-
-        if (!volumeInitialized){
-            std::cout << "INITIALIZING volume" << std::endl;
-            //Init cube with all corners
-            initVolumeCube(firstFrame);
-            volumeInitialized = true;
-            //Definer dv (oppløsning)
-            dv = 1;
-        }
-        executeAlgorithmOnHost();// VoxelsValNWeight, output, frameList, dv, Rmax);
-        /*switch (frame->getDataType()) {
-            fastSwitchTypeMacro(executeAlgorithmOnHost<FAST_TYPE>(VoxelsValNWeight, output, frameList, dv, Rmax));
-        }*/
-    }
-    else{// if (dynamicImage->getSize() == 0){
-        std::cout << "DynImg size" << dynamicImage->getSize() << std::endl;
-    }
-        //getInputData(0);//getStaticInputData<Image>(0);
-    /*if (input->getDimension() != 2){
-        throw Exception("The algorithm only handles 2D image input");
-    }*/
-    //if (dynamicImage->)
-    
-    return;
-    /*if (device->isHost()){
-        switch (input->getDataType()) {
-            fastSwitchTypeMacro(executeAlgorithmOnHost<FAST_TYPE>(input, output, mMask, maskSize));
-        }
-    }
-    else{
-        switch (input->getDataType()) {
-            fastSwitchTypeMacro(executeAlgorithmOnHost<FAST_TYPE>(input, output, mMask, maskSize));
-        }
-    }*/
-
-    /*
-    char maskSize = mMaskSize;
-    if (maskSize <= 0) // If mask size is not set calculate it instead
-        maskSize = ceil(2 * mStdDev) * 2 + 1;
-
-    if (maskSize > 19)
-        maskSize = 19;
-
-    // Initialize output image
-    ExecutionDevice::pointer device = getMainDevice();
-    if (mOutputTypeSet) {
-        output->create(input->getSize(), mOutputType, input->getNrOfComponents());
-        output->setSpacing(input->getSpacing());
-    }
-    else {
-        output->createFromImage(input);
-    }
-    mOutputType = output->getDataType();
-    SceneGraph::setParentNode(output, input);
-
-
-    if (device->isHost()) {
-        createMask(input, maskSize, false);
-        switch (input->getDataType()) {
-            fastSwitchTypeMacro(executeAlgorithmOnHost<FAST_TYPE>(input, output, mMask, maskSize));
-        }
-    }
-    else {
-        OpenCLDevice::pointer clDevice = device;
-
-        recompileOpenCLCode(input);
-
-        cl::NDRange globalSize;
-
-        OpenCLImageAccess::pointer inputAccess = input->getOpenCLImageAccess(ACCESS_READ, device);
-        if (input->getDimensions() == 2) {
-            createMask(input, maskSize, false);
-            mKernel.setArg(1, mCLMask);
-            mKernel.setArg(3, maskSize);
-            globalSize = cl::NDRange(input->getWidth(), input->getHeight());
-
-            OpenCLImageAccess::pointer outputAccess = output->getOpenCLImageAccess(ACCESS_READ_WRITE, device);
-            mKernel.setArg(0, *inputAccess->get2DImage());
-            mKernel.setArg(2, *outputAccess->get2DImage());
-            clDevice->getCommandQueue().enqueueNDRangeKernel(
-                mKernel,
-                cl::NullRange,
-                globalSize,
-                cl::NullRange
-                );
-        }
-        else {
-            // Create an auxilliary image
-            Image::pointer output2 = Image::New();
-            output2->createFromImage(output);
-
-            globalSize = cl::NDRange(input->getWidth(), input->getHeight(), input->getDepth());
-
-            if (clDevice->isWritingTo3DTexturesSupported()) {
-                createMask(input, maskSize, true);
-                mKernel.setArg(1, mCLMask);
-                mKernel.setArg(3, maskSize);
-                OpenCLImageAccess::pointer outputAccess = output->getOpenCLImageAccess(ACCESS_READ_WRITE, device);
-                OpenCLImageAccess::pointer outputAccess2 = output2->getOpenCLImageAccess(ACCESS_READ_WRITE, device);
-
-                cl::Image3D* image2;
-                cl::Image3D* image;
-                image = outputAccess->get3DImage();
-                image2 = outputAccess->get3DImage();
-                for (uchar direction = 0; direction < input->getDimensions(); ++direction) {
-                    if (direction == 0) {
-                        mKernel.setArg(0, *inputAccess->get3DImage());
-                        mKernel.setArg(2, *image);
-                    }
-                    else if (direction == 1) {
-                        mKernel.setArg(0, *image);
-                        mKernel.setArg(2, *image2);
-                    }
-                    else {
-                        mKernel.setArg(0, *image2);
-                        mKernel.setArg(2, *image);
-                    }
-                    mKernel.setArg(4, direction);
-                    clDevice->getCommandQueue().enqueueNDRangeKernel(
-                        mKernel,
-                        cl::NullRange,
-                        globalSize,
-                        cl::NullRange
-                        );
-                }
-            }
-            else {
-                createMask(input, maskSize, false);
-                mKernel.setArg(1, mCLMask);
-                mKernel.setArg(3, maskSize);
-                OpenCLBufferAccess::pointer outputAccess = output->getOpenCLBufferAccess(ACCESS_READ_WRITE, device);
-                mKernel.setArg(0, *inputAccess->get3DImage());
-                mKernel.setArg(2, *outputAccess->get());
-                clDevice->getCommandQueue().enqueueNDRangeKernel(
-                    mKernel,
-                    cl::NullRange,
-                    globalSize,
-                    cl::NullRange
-                    );
-            }
-
-
-        }
-    }*/
-}
-
 void PnnNoHf::initVolumeCube(Image::pointer rootFrame){
     /*
     bool dynData = input->isDynamicData();
@@ -449,6 +265,8 @@ void PnnNoHf::initVolumeCube(Image::pointer rootFrame){
     std::cout << "Stream " << stream << std::endl;
     //uint nrOfFrames = stream->getNrOfFrames();
     */
+
+    /*
     // Calculate image plane normal
     AffineTransformation::pointer imageTransformation = SceneGraph::getAffineTransformationFromData(rootFrame);
     Vector3f p0 = imageTransformation->multiply(Vector3f(0, 0, 0));
@@ -475,6 +293,7 @@ void PnnNoHf::initVolumeCube(Image::pointer rootFrame){
         Eigen::Vector3f cornerTrans(rootBBtransCorners(i, 0), rootBBtransCorners(i, 1), rootBBtransCorners(i, 2));
         points.push_back(cornerTrans);
     }
+    */
 
     // BIG TODO
         // Find transform from rootFrame to normalized space
@@ -514,25 +333,279 @@ void PnnNoHf::initVolumeCube(Image::pointer rootFrame){
 
     // Init volume
     Vector3f size = max - min;
+    Vector3i volumeSize = Vector3i(ceil(size[0]), ceil(size[1]), ceil(size[2]));
     zeroPoints = min;
     DataType type = DataType::TYPE_INT8; //frame->getDataType();
-    int initVal = 0.0;
-    VoxelsValNWeight->create(size[0], size[1], size[2], type, 2);
+    float initVal = 0.0;
+    VoxelsValNWeight = Image::New();
+    VoxelsValNWeight->create(volumeSize[0], volumeSize[1], volumeSize[2], type, 2);
     ImageAccess::pointer volAccess = VoxelsValNWeight->getImageAccess(accessType::ACCESS_READ_WRITE);
-    for (int x = 0; x < size[0]; x++){
-        for (int y = 0; y < size[1]; y++){
-            for (int z = 0; z < size[2]; z++){
+    for (int x = 0; x < volumeSize[0]; x++){
+        for (int y = 0; y < volumeSize[1]; y++){
+            for (int z = 0; z < volumeSize[2]; z++){
+                Vector3i location = Vector3i(x, y, z);
+                float voxelValue0 = volAccess->getScalar(location, 0);
                 volAccess->setScalar((x, y, z), initVal, 0); //Channel 1 - Value
+                float voxelValue = volAccess->getScalar(location, 0);
                 volAccess->setScalar((x, y, z), initVal, 1); //Channel 2 - Weight
-
+                
                 //imgAccess->setVector(Eigen::Vector3i(x, y, z), Eigen::Vector2i(0, 0)); // Eventuelt Vector2f etc
             }
         }
     }
     volAccess->release();
 
+    /*volAccess = VoxelsValNWeight->getImageAccess(accessType::ACCESS_READ_WRITE);
+    for (int x = 0; x < volumeSize[0]; x++){
+        for (int y = 0; y < volumeSize[1]; y++){
+            for (int z = 0; z < volumeSize[2]; z++){
+                float voxelValue0 = volAccess->getScalar((x, y, z), 0);
+                float voxelValue1 = volAccess->getScalar((x, y, z), 1);
+            }
+        }
+    }
+    volAccess->release();*/
     //calculate dv?
     int drrrrrrrr = 1;
+}
+
+void PnnNoHf::execute() {
+    //Image::pointer input = getStaticInputData<Image>(0);
+
+    Image::pointer frame = getStaticInputData<Image>(0);
+    //Image::pointer output = getStaticOutputData<Image>(0);
+    //output->createFromImage(frame);
+    //setStaticOutputData<Image>(0, frame);
+    //return;
+    if (firstFrameNotSet){
+        firstFrame = frame;
+        //frameList.push_back(frame);
+        firstFrameNotSet = false;
+
+        /*DynamicData::pointer dynamicData = getInputData(0);
+        dynamicData->registerConsumer(this);
+
+        firstFrame = dynamicData->getNextFrame(this);
+        frameList.push_back(firstFrame);
+        output->createFromImage(firstFrame);
+
+        while (!dynamicData->hasReachedEnd()){
+        Image::pointer nextFrame = dynamicData->getNextFrame(this);
+        frameList.push_back(nextFrame);
+        }
+
+        if (!volumeInitialized){
+        std::cout << "INITIALIZING volume" << std::endl;
+        //Init cube with all corners
+        initVolumeCube(firstFrame);
+        volumeInitialized = true;
+        //Definer dv (oppløsning)
+        dv = 1;
+        }
+        switch (firstFrame->getDataType()) {
+        fastSwitchTypeMacro(executeAlgorithmOnHost<FAST_TYPE>(firstFrame, output));
+        }*/
+
+        //output = firstFrame;
+        /*IMAGE constructors
+        void create(VectorXui size, DataType type, uint nrOfComponents);
+        void create(uint width, uint height, uint depth, DataType type, uint nrOfComponents);
+        void create(VectorXui size, DataType type, uint nrOfComponents, ExecutionDevice::pointer device, const void * data);
+        void create(uint width, uint height, uint depth, DataType type, uint nrOfComponents, ExecutionDevice::pointer device, const void * data);
+        */
+        //frame->getNrOfComponents;
+        //frame->getDataType();
+        //Image::pointer output = getStaticOutputData<Image>();
+        //output->create(input->getSize(), TYPE_FLOAT, input->getNrOfComponents());
+
+
+        output = getStaticOutputData<Image>(0);
+        DataType type = DataType::TYPE_INT8; //frame->getDataType();
+        uint size = 32;
+        int initVal = 1;
+        output->create(size, size, size, type, 1);// create(500, 500, 500, frame->getDataType(), 2);
+        ImageAccess::pointer imgAccess = output->getImageAccess(accessType::ACCESS_READ_WRITE);
+        ImageAccess::pointer inpAccess = frame->getImageAccess(accessType::ACCESS_READ);
+        for (int x = 0; x < size; x++){
+            for (int y = 0; y < size; y++){
+                int thisVal = inpAccess->getScalar((x, y), 0);
+                for (int z = 0; z < size; z++){
+                    //imgAccess->setScalar((x, y, z), initVal, 0); //Channel 1 - Value
+                    //imgAccess->setScalar((x, y, z), initVal, 1); //Channel 2 - Weight
+                    imgAccess->setScalar((x, y, z), thisVal, 0);
+
+                    //imgAccess->setVector(Eigen::Vector3i(x, y, z), Eigen::Vector2i(0, 0)); // Eventuelt Vector2f etc
+                }
+            }
+        }
+        imgAccess->release();
+        inpAccess->release();
+        std::cout << "MAX intensity" << output->calculateMaximumIntensity() << std::endl;
+
+        //setStaticOutputData<Image>(0, output);
+
+        //output->setSpacing(TODO);
+    }
+    // Lagre frame i PO, f.eks. i en std::vector
+
+    setStaticOutputData<Image>(0, output);
+
+    frameList.push_back(frame);
+
+    //Image::pointer output = getStaticOutputData<Image>();
+    //output->create(256, 256, 256, frame->getDataType(), 2);
+    // Sjekk om vi har nådd slutten
+    DynamicData::pointer dynamicImage = getInputData(0);
+    //dynamicImage->
+    if (dynamicImage->hasReachedEnd()) {
+        //Image::pointer output = getStaticOutputData<Image>(0);
+        // Do reconstruction
+
+        //output->setDimension(3);
+
+        if (!volumeInitialized){
+            std::cout << "INITIALIZING volume" << std::endl;
+            //Init cube with all corners
+            initVolumeCube(firstFrame);
+            volumeInitialized = true;
+            //Definer dv (oppløsning)
+            dv = 1;
+        }
+        executeAlgorithmOnHost();// VoxelsValNWeight, output, frameList, dv, Rmax);
+        /*switch (frame->getDataType()) {
+        fastSwitchTypeMacro(executeAlgorithmOnHost<FAST_TYPE>(VoxelsValNWeight, output, frameList, dv, Rmax));
+        }*/
+    }
+    /*else{// if (dynamicImage->getSize() == 0){
+    std::cout << "DynImg size" << dynamicImage->getSize() << std::endl;
+    }*/
+    //getInputData(0);//getStaticInputData<Image>(0);
+    /*if (input->getDimension() != 2){
+    throw Exception("The algorithm only handles 2D image input");
+    }*/
+    //if (dynamicImage->)
+
+    return;
+    /*if (device->isHost()){
+    switch (input->getDataType()) {
+    fastSwitchTypeMacro(executeAlgorithmOnHost<FAST_TYPE>(input, output, mMask, maskSize));
+    }
+    }
+    else{
+    switch (input->getDataType()) {
+    fastSwitchTypeMacro(executeAlgorithmOnHost<FAST_TYPE>(input, output, mMask, maskSize));
+    }
+    }*/
+
+    /*
+    char maskSize = mMaskSize;
+    if (maskSize <= 0) // If mask size is not set calculate it instead
+    maskSize = ceil(2 * mStdDev) * 2 + 1;
+
+    if (maskSize > 19)
+    maskSize = 19;
+
+    // Initialize output image
+    ExecutionDevice::pointer device = getMainDevice();
+    if (mOutputTypeSet) {
+    output->create(input->getSize(), mOutputType, input->getNrOfComponents());
+    output->setSpacing(input->getSpacing());
+    }
+    else {
+    output->createFromImage(input);
+    }
+    mOutputType = output->getDataType();
+    SceneGraph::setParentNode(output, input);
+
+
+    if (device->isHost()) {
+    createMask(input, maskSize, false);
+    switch (input->getDataType()) {
+    fastSwitchTypeMacro(executeAlgorithmOnHost<FAST_TYPE>(input, output, mMask, maskSize));
+    }
+    }
+    else {
+    OpenCLDevice::pointer clDevice = device;
+
+    recompileOpenCLCode(input);
+
+    cl::NDRange globalSize;
+
+    OpenCLImageAccess::pointer inputAccess = input->getOpenCLImageAccess(ACCESS_READ, device);
+    if (input->getDimensions() == 2) {
+    createMask(input, maskSize, false);
+    mKernel.setArg(1, mCLMask);
+    mKernel.setArg(3, maskSize);
+    globalSize = cl::NDRange(input->getWidth(), input->getHeight());
+
+    OpenCLImageAccess::pointer outputAccess = output->getOpenCLImageAccess(ACCESS_READ_WRITE, device);
+    mKernel.setArg(0, *inputAccess->get2DImage());
+    mKernel.setArg(2, *outputAccess->get2DImage());
+    clDevice->getCommandQueue().enqueueNDRangeKernel(
+    mKernel,
+    cl::NullRange,
+    globalSize,
+    cl::NullRange
+    );
+    }
+    else {
+    // Create an auxilliary image
+    Image::pointer output2 = Image::New();
+    output2->createFromImage(output);
+
+    globalSize = cl::NDRange(input->getWidth(), input->getHeight(), input->getDepth());
+
+    if (clDevice->isWritingTo3DTexturesSupported()) {
+    createMask(input, maskSize, true);
+    mKernel.setArg(1, mCLMask);
+    mKernel.setArg(3, maskSize);
+    OpenCLImageAccess::pointer outputAccess = output->getOpenCLImageAccess(ACCESS_READ_WRITE, device);
+    OpenCLImageAccess::pointer outputAccess2 = output2->getOpenCLImageAccess(ACCESS_READ_WRITE, device);
+
+    cl::Image3D* image2;
+    cl::Image3D* image;
+    image = outputAccess->get3DImage();
+    image2 = outputAccess->get3DImage();
+    for (uchar direction = 0; direction < input->getDimensions(); ++direction) {
+    if (direction == 0) {
+    mKernel.setArg(0, *inputAccess->get3DImage());
+    mKernel.setArg(2, *image);
+    }
+    else if (direction == 1) {
+    mKernel.setArg(0, *image);
+    mKernel.setArg(2, *image2);
+    }
+    else {
+    mKernel.setArg(0, *image2);
+    mKernel.setArg(2, *image);
+    }
+    mKernel.setArg(4, direction);
+    clDevice->getCommandQueue().enqueueNDRangeKernel(
+    mKernel,
+    cl::NullRange,
+    globalSize,
+    cl::NullRange
+    );
+    }
+    }
+    else {
+    createMask(input, maskSize, false);
+    mKernel.setArg(1, mCLMask);
+    mKernel.setArg(3, maskSize);
+    OpenCLBufferAccess::pointer outputAccess = output->getOpenCLBufferAccess(ACCESS_READ_WRITE, device);
+    mKernel.setArg(0, *inputAccess->get3DImage());
+    mKernel.setArg(2, *outputAccess->get());
+    clDevice->getCommandQueue().enqueueNDRangeKernel(
+    mKernel,
+    cl::NullRange,
+    globalSize,
+    cl::NullRange
+    );
+    }
+
+
+    }
+    }*/
 }
 
 void PnnNoHf::waitToFinish() {
@@ -542,121 +615,7 @@ void PnnNoHf::waitToFinish() {
     }
 }
 
-// ########################
 /*
-void GaussianSmoothingFilter::setMaskSize(unsigned char maskSize) {
-    if(maskSize <= 0)
-        throw Exception("Mask size of GaussianSmoothingFilter can't be less than 0.");
-    if(maskSize % 2 != 1)
-        throw Exception("Mask size of GaussianSmoothingFilter must be odd.");
-
-    mMaskSize = maskSize;
-    mIsModified = true;
-    mRecreateMask = true;
-}
-
-void GaussianSmoothingFilter::setOutputType(DataType type) {
-    mOutputType = type;
-    mOutputTypeSet = true;
-    mIsModified = true;
-}
-
-void GaussianSmoothingFilter::setStandardDeviation(float stdDev) {
-    if(stdDev <= 0)
-        throw Exception("Standard deviation of GaussianSmoothingFilter can't be less than 0.");
-
-    mStdDev = stdDev;
-    mIsModified = true;
-    mRecreateMask = true;
-}
-
-GaussianSmoothingFilter::GaussianSmoothingFilter() {
-    createInputPort<Image>(0);
-    createOutputPort<Image>(0, OUTPUT_DEPENDS_ON_INPUT, 0);
-    createOpenCLProgram(std::string(FAST_SOURCE_DIR) + "Algorithms/GaussianSmoothingFilter/GaussianSmoothingFilter2D.cl", "2D");
-    createOpenCLProgram(std::string(FAST_SOURCE_DIR) + "Algorithms/GaussianSmoothingFilter/GaussianSmoothingFilter3D.cl", "3D");
-    mStdDev = 0.5f;
-    mMaskSize = -1;
-    mIsModified = true;
-    mRecreateMask = true;
-    mDimensionCLCodeCompiledFor = 0;
-    mMask = NULL;
-    mOutputTypeSet = false;
-}
-
-GaussianSmoothingFilter::~GaussianSmoothingFilter() {
-    delete[] mMask;
-}
-
-// TODO have to set mRecreateMask to true if input change dimension
-void GaussianSmoothingFilter::createMask(Image::pointer input, uchar maskSize, bool useSeperableFilter) {
-    if(!mRecreateMask)
-        return;
-
-    unsigned char halfSize = (maskSize-1)/2;
-    float sum = 0.0f;
-
-    if(input->getDimensions() == 2) {
-        mMask = new float[maskSize*maskSize];
-
-        for(int x = -halfSize; x <= halfSize; x++) {
-        for(int y = -halfSize; y <= halfSize; y++) {
-            float value = exp(-(float)(x*x+y*y)/(2.0f*mStdDev*mStdDev));
-            mMask[x+halfSize+(y+halfSize)*maskSize] = value;
-            sum += value;
-        }}
-
-        for(int i = 0; i < maskSize*maskSize; ++i)
-            mMask[i] /= sum;
-    } else if(input->getDimensions() == 3) {
-        // Use separable filtering for 3D
-        if(useSeperableFilter) {
-            mMask = new float[maskSize];
-
-            for(int x = -halfSize; x <= halfSize; x++) {
-                float value = exp(-(float)(x*x)/(2.0f*mStdDev*mStdDev));
-                mMask[x+halfSize] = value;
-                sum += value;
-            }
-
-            for(int i = 0; i < maskSize; ++i)
-                mMask[i] /= sum;
-        } else {
-            mMask = new float[maskSize*maskSize*maskSize];
-
-            for(int x = -halfSize; x <= halfSize; x++) {
-            for(int y = -halfSize; y <= halfSize; y++) {
-            for(int z = -halfSize; z <= halfSize; z++) {
-                float value = exp(-(float)(x*x+y*y+z*z)/(2.0f*mStdDev*mStdDev));
-                mMask[x+halfSize+(y+halfSize)*maskSize+(z+halfSize)*maskSize*maskSize] = value;
-                sum += value;
-            }}}
-
-            for(int i = 0; i < maskSize*maskSize*maskSize; ++i)
-                mMask[i] /= sum;
-        }
-    }
-
-    ExecutionDevice::pointer device = getMainDevice();
-    if(!device->isHost()) {
-        OpenCLDevice::pointer clDevice = device;
-        uint bufferSize;
-        if(useSeperableFilter) {
-            bufferSize = maskSize;
-        } else {
-            bufferSize = input->getDimensions() == 2 ? maskSize*maskSize : maskSize*maskSize*maskSize;
-        }
-        mCLMask = cl::Buffer(
-                clDevice->getContext(),
-                CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-                sizeof(float)*bufferSize,
-                mMask
-        );
-    }
-
-    mRecreateMask = false;
-}
-
 void GaussianSmoothingFilter::recompileOpenCLCode(Image::pointer input) {
     // Check if there is a need to recompile OpenCL code
     if(input->getDimensions() == mDimensionCLCodeCompiledFor &&

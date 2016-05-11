@@ -304,7 +304,7 @@ bool DynamicData::hasReachedEnd() {
                 mHasReachedEnd = true;
             break;
         case STREAMING_MODE_PROCESS_ALL_FRAMES:
-            std::cout << "ALL Frames #:" << streamer->getNrOfFrames() << std::endl;
+            //std::cout << "ALL Frames #:" << streamer->getNrOfFrames() << std::endl;
             std::cout << "ALL Processing frame #:" << getLowestFrameCount() << std::endl;
             if(streamer->hasReachedEnd() && mFrames2.size() == 0)
                 mHasReachedEnd = true;

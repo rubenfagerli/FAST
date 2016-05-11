@@ -26,7 +26,7 @@ int main() {
     //streamer->setStreamingMode(STREAMING_MODE_STORE_ALL_FRAMES);
     streamer->setFilenameFormat(std::string(FAST_TEST_DATA_DIR)+folder+nameformat);
     //streamer->setMaximumNumberOfFrames(746); //746 total
-    streamer->setStartNumber(200);
+    streamer->setStartNumber(735);//200);
     //streamer->setStepSize(2);
     //streamer->enableLooping();
     std::cout << "Nr of frames" << streamer->getNrOfFrames() << std::endl;
