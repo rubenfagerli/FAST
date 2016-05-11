@@ -19,6 +19,7 @@ class PnnNoHf : public ProcessObject {
         void execute();
         void waitToFinish();
         void initVolumeCube(Image::pointer input);
+        void executeAlgorithmOnHost();
         //void createMask(Image::pointer input, uchar maskSize, bool useSeperableFilter);
         //void recompileOpenCLCode(Image::pointer input);
 

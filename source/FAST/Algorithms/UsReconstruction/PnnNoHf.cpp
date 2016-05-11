@@ -20,8 +20,8 @@ PnnNoHf::PnnNoHf(){
     mOutputTypeSet = false;
 
     //volume;
-    dv = 1;
-    Rmax = 3; //2?
+    dv = 1.0;
+    Rmax = 3.0; //2?
     volumeInitialized = false;
     firstFrameNotSet = true;
     frameList = {};
@@ -45,35 +45,86 @@ Vector3f getImagePlaneNormal(Image::pointer frame){
 }
 
 // CPU algoritme
-template <class T>
-void executeAlgorithmOnHost(Image::pointer input, Image::pointer output){
+//template <class T>
+void PnnNoHf::executeAlgorithmOnHost(){//Image::pointer VoxelsValNWeight, Image::pointer output, std::vector<Image::pointer> frameList, float dv, float Rmax){
+    //VoxelsValNWeight = Image::pointer::New();
     ImageAccess::pointer volAccess = VoxelsValNWeight->getImageAccess(ACCESS_READ_WRITE);
-    Image::pointer lastFrame = None;
-    while (!frameList.empty()){
-        Image::pointer frame = frameList.back();
-        frameList.pop_back();
+    //Image::pointer lastFrame = none;
+    for (int i = 0; i < frameList.size(); i++){
+        Image::pointer frame = frameList[i];
         //zeroPoints
         // # Finn dominerende rettning #
         Vector3f imagePlaneNormal = getImagePlaneNormal(frame);
-        float domVal = imagePlaneNormal(0); int domDir = 0
+        float domVal = imagePlaneNormal(0); int domDir = 0;
         if (imagePlaneNormal(1) > domDir) domVal = imagePlaneNormal(1); domDir = 1;
         if (imagePlaneNormal(2) > domDir) domVal = imagePlaneNormal(2); domDir = 2;
         // TODO adjust for or compare to output volume direction
 
         // # Go through output volume #
         ImageAccess::pointer frameAccess = frame->getImageAccess(ACCESS_READ);
-        if (!frameList.empty()){ Image::pointer next = frameList.back(); }
+        Image::pointer last;
+        Image::pointer next;
+        if (i != 0) { last = frameList[i - 1]; }
+        //if (!frameList.empty()){ Image::pointer next = frameList.back(); }
+        if (i < frameList.size()-1 ) { next = frameList[i + 1]; }
 
-
-        for (int x = 0; x < frame.getWidth(); x++){
-            for (int y = 0; y < frame.getHeight(); y++){
+        Vector3f baselocation = frame->getTransformedBoundingBox().getCorners().row(0); //corner 0
+        for (int x = 0; x < frame->getWidth(); x++){
+            for (int y = 0; y < frame->getHeight(); y++){
                 //Find thickness according to last and next frame along the imagePlaneNormal
-                float maxNeighDist = max(d1, d2);
-                float df = min(max(maxNeighDist, dv), Rmax);
+                Vector3f location = baselocation + Vector3f(x, y, 0.0); // TODO make sure x, y is transformed
+                //todo: find dist
+                float d1 = 1.2; float d2 = 1.4;
+                //Calculate
+                float maxNeighDist = std::max(d1, d2);
+                float df = std::min(std::max(maxNeighDist, dv), Rmax);
                 float dfz = df / domVal;
+
+                //Find pixels in frames within thickness (2x dfz) in Z-direction
+                // for now just checking next and last TODO fix // These can also be limited outside the x/y for loop to show only frames within a certain distance from this frame (for instance using Rmax)
+                std::vector<Image::pointer> framesToCheck = {};
+                framesToCheck.push_back(last);
+                framesToCheck.push_back(next);
+                framesToCheck.push_back(frame);
+
+                for (Image::pointer nFrame : framesToCheck){
+                    // Given that frame has close enough pixels: Find pixel closest to point
+                    float p = nFrame->getImageAccess(ACCESS_READ)->getScalar((x,y), 0);
+                    float w = 1;
+                    // Accumulate
+                    volAccess->setScalar(location, volAccess->getScalar(location, 0) + p, 0);
+                    volAccess->setScalar(location, volAccess->getScalar(location, 1) + w, 1);
+                }
             }
         }
     }
+    /*while (!frameList.empty()){
+        Image::pointer frame = frameList.back();
+        frameList.pop_back();
+    }*/
+    
+    // Finally, calculate reconstructed volume
+    output->create(VoxelsValNWeight->getSize(), VoxelsValNWeight->getDataType(), 1);
+    ImageAccess::pointer outAccess = output->getImageAccess(ACCESS_READ_WRITE);
+    for (int x = 0; x < output->getWidth(); x++){
+        for (int y = 0; y < output->getHeight(); y++){
+            for (int z = 0; z < output->getDepth(); z++){
+                Vector3f location = Vector3f(x, y, z);
+                float P = volAccess->getScalar(location, 0);
+                float W = volAccess->getScalar(location, 1);
+                if (W != 0.0){
+                    outAccess->setScalar(location, (P / W), 0);
+                }
+                else{
+                    outAccess->setScalar(location, 0, 0);
+                }
+            }
+        }
+    }
+    outAccess.release();
+    volAccess.release();
+
+    setStaticOutputData<Image>(0, output);
 }
 /*
 void executeAlgorithmOnHost(Image::pointer input, Image::pointer output, float * mask, unsigned char maskSize) {
@@ -242,9 +293,10 @@ void PnnNoHf::execute() {
             //Definer dv (oppløsning)
             dv = 1;
         }
-        switch (frame->getDataType()) {
-            fastSwitchTypeMacro(executeAlgorithmOnHost<FAST_TYPE>(frame, output));
-        }
+        executeAlgorithmOnHost();// VoxelsValNWeight, output, frameList, dv, Rmax);
+        /*switch (frame->getDataType()) {
+            fastSwitchTypeMacro(executeAlgorithmOnHost<FAST_TYPE>(VoxelsValNWeight, output, frameList, dv, Rmax));
+        }*/
     }
     else{// if (dynamicImage->getSize() == 0){
         std::cout << "DynImg size" << dynamicImage->getSize() << std::endl;
@@ -465,11 +517,11 @@ void PnnNoHf::initVolumeCube(Image::pointer rootFrame){
     zeroPoints = min;
     DataType type = DataType::TYPE_INT8; //frame->getDataType();
     int initVal = 0.0;
-    VoxelsValNWeight->create(size, type, 2);
+    VoxelsValNWeight->create(size[0], size[1], size[2], type, 2);
     ImageAccess::pointer volAccess = VoxelsValNWeight->getImageAccess(accessType::ACCESS_READ_WRITE);
     for (int x = 0; x < size[0]; x++){
-        for (int y = 0; y < size[0]; y++){
-            for (int z = 0; z < size[0]; z++){
+        for (int y = 0; y < size[1]; y++){
+            for (int z = 0; z < size[2]; z++){
                 volAccess->setScalar((x, y, z), initVal, 0); //Channel 1 - Value
                 volAccess->setScalar((x, y, z), initVal, 1); //Channel 2 - Weight
 
