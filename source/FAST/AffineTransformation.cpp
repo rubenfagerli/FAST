@@ -33,6 +33,12 @@ Vector3f AffineTransformation::multiply(Vector3f point) {
 	return (matrix()*point.homogeneous()).head(3);
 }
 
+AffineTransformation::pointer AffineTransformation::inverseTransform(){
+    AffineTransformation::pointer result = AffineTransformation::New();
+    result->matrix() = matrix().inverse();
+    return result;
+}
+
 
 
 }
