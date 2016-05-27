@@ -35,10 +35,6 @@ int main() {
     PnnNoHf::pointer pnn = PnnNoHf::New();
     pnn->setInputConnection(streamer->getOutputPort());
 
-    //Alt for now, display image
-    ImageRenderer::pointer imageRenderer = ImageRenderer::New();
-    //imageRenderer->addInputConnection(pnn->getOutputPort()); //streamer
-
     // Renderer volume
     VolumeRenderer::pointer volumeRenderer = VolumeRenderer::New();
     volumeRenderer->addInputConnection(pnn->getOutputPort());
@@ -52,10 +48,15 @@ int main() {
     volumeRenderer->setColorTransferFunction(0, ctf);
     volumeRenderer->setOpacityTransferFunction(0, otf);
 
+    //Alt for now, display image
+    //Image renderer
+    ImageRenderer::pointer imageRenderer = ImageRenderer::New();
+    imageRenderer->addInputConnection(pnn->getOutputPort());
+
     SimpleWindow::pointer window = SimpleWindow::New();
-    window->addRenderer(volumeRenderer);//renderer);
+    window->addRenderer(imageRenderer); //volumeRenderer);//renderer);
     //window->setMaximumFramerate(10); //unngå at buffer går tomt?
     //window->set2DMode();
-    window->setTimeout(5*1000); // automatically close window after 5 seconds
+    window->setTimeout(60*1000); // automatically close window after 5 seconds
     window->start();
 }

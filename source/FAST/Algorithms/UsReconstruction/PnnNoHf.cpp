@@ -49,7 +49,7 @@ Vector3f getImagePlaneNormal(Image::pointer frame){
 void PnnNoHf::executeAlgorithmOnHost(){//Image::pointer VoxelsValNWeight, Image::pointer output, std::vector<Image::pointer> frameList, float dv, float Rmax){
     //VoxelsValNWeight = Image::pointer::New();
     std::cout << "Started executing on host!" << std::endl;
-    ImageAccess::pointer volAccess = VoxelsValNWeight->getImageAccess(accessType::ACCESS_READ_WRITE);
+    /*ImageAccess::pointer volAccess = VoxelsValNWeight->getImageAccess(accessType::ACCESS_READ_WRITE);
     for (int x = 0; x < 5; x++){
         for (int y = 0; y < 5; y++){
             for (int z = 0; z < 5; z++){
@@ -58,7 +58,7 @@ void PnnNoHf::executeAlgorithmOnHost(){//Image::pointer VoxelsValNWeight, Image:
                 float voxelValue1 = volAccess->getScalar(position, 1);
             }
         }
-    }
+    }*/
     //Image::pointer lastFrame = none;
     for (int i = 0; i < frameList.size(); i++){
         Image::pointer frame = frameList[i];
@@ -91,24 +91,43 @@ void PnnNoHf::executeAlgorithmOnHost(){//Image::pointer VoxelsValNWeight, Image:
 
         Vector3f baselocation = frame->getTransformedBoundingBox().getCorners().row(0); //corner 0 local values (0,0,0)
         Vector3f adjustedBaseLocation = baselocation - zeroPoints;
-        for (int x = 0; x < frame->getWidth(); x++){
-            for (int y = 0; y < frame->getHeight(); y++){
+        int sizeA, sizeB;
+        if (domDir == 2){
+            sizeA = frame->getWidth();
+            sizeB = frame->getHeight();
+        }
+        else if (domDir == 1){
+            sizeA = frame->getWidth();
+            sizeB = frame->getDepth();
+        }
+        else{
+            sizeA = frame->getHeight();
+            sizeB = frame->getDepth();
+        }
+        for (int a = 0; a < sizeA; a++){ //TODO use domDir to decide if its actually x/y/z we are gonna leave out of iteration. Ie. call these a/b and asign them to the appropriate x/y/z + x/y/z
+            for (int b = 0; b < sizeB; b++){
+                //Index for 2 non-superior directions of imagePlaneNormal
+                int x, y, z = 0;
+                if (domDir == 2){
+                    x = a; y = b;   
+                } else if (domDir == 1){  
+                    x = a; z = b;   
+                } else {                   
+                    y = a; z = b;   
+                }
                 //Find thickness according to last and next frame along the imagePlaneNormal
-                Vector3i location = Vector3i(x, y, 0); // TODO make sure x, y is transformed -> x/y need to be transformed now to reflect change in new coordinate system
-                location[0] += round(adjustedBaseLocation[0]); //use round instead? int() does cutoff 158.94 -> 158
-                location[1] += round(adjustedBaseLocation[1]);
-                location[2] += round(adjustedBaseLocation[2]);
+                Vector3i location = Vector3i(x, y, z); // TODO make sure x, y is transformed -> x/y need to be transformed now to reflect change in new coordinate system
+                location(0) += round(adjustedBaseLocation(0)); //use round instead? int() does cutoff 158.94 -> 158
+                location(1) += round(adjustedBaseLocation(1));
+                location(2) += round(adjustedBaseLocation(2)); //TODO Location must be decided by unit vector in each direction times the number x/y/z
                 Vector3ui volSize = VoxelsValNWeight->getSize();
-                if (location[0] >= VoxelsValNWeight->getWidth()){
-                    int abc = 0;
+                if (location(0) >= VoxelsValNWeight->getWidth()){
                     continue;
                 }
-                if (location[1] >= VoxelsValNWeight->getHeight()){
-                    int abc = 0;
+                if (location(1) >= VoxelsValNWeight->getHeight()){
                     continue;
                 }
-                if (location[2] >= VoxelsValNWeight->getDepth()){
-                    int abc = 0;
+                if (location(2) >= VoxelsValNWeight->getDepth()){
                     continue;
                 }
                 //todo: find dist to LAST and NEXT
@@ -164,7 +183,7 @@ void PnnNoHf::executeAlgorithmOnHost(){//Image::pointer VoxelsValNWeight, Image:
                 Vector3i location = Vector3i(x, y, z);
                 float P = volAccess->getScalar(location, 0);
                 float W = volAccess->getScalar(location, 1);
-                if (W > 0.0 && P >= 0.0){ // W != 0.0 to avoid division error
+                if (W > 0.0 && P >= 0.0){ // W != 0.0 to avoid division error // This other logic to avoid -51.00 blanks
                     float finalP = P / W;
                     outAccess->setScalar(location, finalP, 0);
                 }
@@ -179,6 +198,25 @@ void PnnNoHf::executeAlgorithmOnHost(){//Image::pointer VoxelsValNWeight, Image:
     volAccess.release();
 
     //setStaticOutputData<Image>(0, output); //fails with this one?
+    // MAKE 2D Image cut
+    outAccess = output->getImageAccess(ACCESS_READ);
+    Image::pointer outputImg = getStaticOutputData<Image>(0);
+    Vector3ui outputImgSize = output->getSize(); //Vector3i(output->getHeight(), output->getWidth(),1);
+    outputImgSize(2) = 1;
+    outputImg->create(outputImgSize, VoxelsValNWeight->getDataType(), 1);
+    ImageAccess::pointer outImgAccess = outputImg->getImageAccess(ACCESS_READ_WRITE);
+    for (int x = 0; x < output->getWidth(); x++){
+        for (int y = 0; y < output->getHeight(); y++){
+            Vector3i location = Vector3i(x, y, 0);
+            //Vector2i outLoc = Vector2i(x, y);
+            float p = outAccess->getScalar(location, 0);
+            outImgAccess->setScalar(location, p, 0);
+        }
+    }
+    outAccess.release();
+    outImgAccess.release();
+    setStaticOutputData<Image>(0, outputImg); //2D
+    // MAKE 2D Image END
     std::cout << "Execute method finished succesfully!" << std::endl;
 }
 /*
@@ -298,14 +336,40 @@ void PnnNoHf::initVolumeCube(Image::pointer rootFrame){
     // BIG TODO
         // Find transform from rootFrame to normalized space
         // Use this transform to transform all frames
-    
+    // TO TRANSFORM: image->getSceneGraphNode()->setTransformation(transform), der transform er av typen AffineTransformation::pointer
+    // Calculate image plane normal
+    AffineTransformation::pointer imageTransformation = SceneGraph::getAffineTransformationFromData(rootFrame);
+    Vector3f p0 = imageTransformation->multiply(Vector3f(0, 0, 0));
+    Vector3f p1 = imageTransformation->multiply(Vector3f(1, 0, 0));
+    Vector3f p2 = imageTransformation->multiply(Vector3f(0, 1, 0));
+    Vector3f imagePlaneNormal = (p1 - p0).cross(p2 - p0);
+    imagePlaneNormal.normalize();
+    //AffineConst: AffineTransformation(const Eigen::Affine3f& transform);
+        // Other: AffineTransformation::pointer multiply(AffineTransformation::pointer);
+            //Vector3f multiply(Vector3f);
+            //AffineTransformation& operator=(const Eigen::Affine3f& transform);
+    //imageTransformation.inverse(TransformationTraits.Affine);
+    /*Eigen::Transform<float, 3, Eigen::Affine> invTransformation = imageTransformation->inverse(); //Eigen::Transform<float,3,2,0>
+    Eigen::Affine3f invTrans2 = invTransformation;
+    AffineTransformation systemTransformation = invTrans2; //AffineTransformation::New();
+    //systemTransformation::AffineTransformation(invTrans2);
+    AffineTransformation::pointer systemTransformation2 = SharedPointer<AffineTransformation>(systemTransformation);*/
+    AffineTransformation::pointer inverseSystemTransform = imageTransformation->inverseTransform();
+    Vector3f cornerBase = rootFrame->getBoundingBox().getCorners().row(0);
+    Vector3f cornerTrans = rootFrame->getTransformedBoundingBox().getCorners().row(0);
+    AffineTransformation::pointer rootTransform = imageTransformation->multiply(inverseSystemTransform);
+    //New image transform = oldImageTransformation->multiply(inverseSystemTransform);
+    rootFrame->getSceneGraphNode()->setTransformation(rootTransform); //and so on
+    Vector3f cornerTransToBase = rootFrame->getTransformedBoundingBox().getCorners().row(0);
+
+    // ## Calculate min-max in different directions
     Vector3f min, max;
     //Vector3f centroid;
     //BoundingBox box = rootFrame->getBoundingBox();
     BoundingBox box = rootFrame->getTransformedBoundingBox();
     MatrixXf corners = box.getCorners();
     Vector3f corner = box.getCorners().row(0);
-    min[0] = corner[0];
+    min[0] = corner[0]; //OR ()?
     max[0] = corner[0];
     min[1] = corner[1];
     max[1] = corner[1];
@@ -314,8 +378,16 @@ void PnnNoHf::initVolumeCube(Image::pointer rootFrame){
    
     
     for (int i = 0; i < frameList.size(); i++){
-        BoundingBox box = frameList[i]->getTransformedBoundingBox();
+        Image::pointer img = frameList[i];
+        // Start transforming frame
+        AffineTransformation::pointer oldImgTransform = SceneGraph::getAffineTransformationFromData(img);
+        AffineTransformation::pointer newImgTransform = oldImgTransform->multiply(inverseSystemTransform);
+        img->getSceneGraphNode()->setTransformation(newImgTransform);
+        // Frame transformed get bounding box
+        BoundingBox box = img->getTransformedBoundingBox();
         MatrixXf corners = box.getCorners();
+        Vector3f baseCorner = corners.row(0);
+        //TODO save each min/max for each frame in transformed directions!
         for (int j = 0; j < 8; j++) {
             for (uint k = 0; k < 3; k++) {
                 float point = corners(j, k);
@@ -333,21 +405,22 @@ void PnnNoHf::initVolumeCube(Image::pointer rootFrame){
 
     // Init volume
     Vector3f size = max - min;
-    Vector3i volumeSize = Vector3i(ceil(size[0]), ceil(size[1]), ceil(size[2]));
+    Vector3i volumeSize = Vector3i(ceil(size(0)), ceil(size(1)), ceil(size(2)));
     zeroPoints = min;
-    DataType type = DataType::TYPE_INT8; //frame->getDataType();
+    DataType type = DataType::TYPE_FLOAT; //TYPE_INT8; //frame->getDataType();
     float initVal = 0.0;
+
     VoxelsValNWeight = Image::New();
-    VoxelsValNWeight->create(volumeSize[0], volumeSize[1], volumeSize[2], type, 2);
+    VoxelsValNWeight->create(volumeSize(0), volumeSize(1), volumeSize(2), type, 2);
     ImageAccess::pointer volAccess = VoxelsValNWeight->getImageAccess(accessType::ACCESS_READ_WRITE);
-    for (int x = 0; x < volumeSize[0]; x++){
-        for (int y = 0; y < volumeSize[1]; y++){
-            for (int z = 0; z < volumeSize[2]; z++){
+    for (int x = 0; x < volumeSize(0); x++){
+        for (int y = 0; y < volumeSize(1); y++){
+            for (int z = 0; z < volumeSize(2); z++){
                 Vector3i location = Vector3i(x, y, z);
                 float voxelValue0 = volAccess->getScalar(location, 0);
-                volAccess->setScalar((x, y, z), initVal, 0); //Channel 1 - Value
+                volAccess->setScalar(location, initVal, 0); //Channel 1 - Value
                 float voxelValue = volAccess->getScalar(location, 0);
-                volAccess->setScalar((x, y, z), initVal, 1); //Channel 2 - Weight
+                volAccess->setScalar(location, initVal, 1); //Channel 2 - Weight
                 
                 //imgAccess->setVector(Eigen::Vector3i(x, y, z), Eigen::Vector2i(0, 0)); // Eventuelt Vector2f etc
             }
@@ -420,15 +493,16 @@ void PnnNoHf::execute() {
 
 
         output = getStaticOutputData<Image>(0);
-        DataType type = DataType::TYPE_INT8; //frame->getDataType();
+        DataType type = DataType::TYPE_FLOAT; // INT8; //frame->getDataType();
         uint size = 32;
-        int initVal = 1;
+        //int initVal = 1;
+        float initVal = 1.0;
         output->create(size, size, size, type, 1);// create(500, 500, 500, frame->getDataType(), 2);
         ImageAccess::pointer imgAccess = output->getImageAccess(accessType::ACCESS_READ_WRITE);
         ImageAccess::pointer inpAccess = frame->getImageAccess(accessType::ACCESS_READ);
         for (int x = 0; x < size; x++){
             for (int y = 0; y < size; y++){
-                int thisVal = inpAccess->getScalar((x, y), 0);
+                float thisVal = inpAccess->getScalar((x, y), 0);
                 for (int z = 0; z < size; z++){
                     //imgAccess->setScalar((x, y, z), initVal, 0); //Channel 1 - Value
                     //imgAccess->setScalar((x, y, z), initVal, 1); //Channel 2 - Weight
@@ -448,7 +522,8 @@ void PnnNoHf::execute() {
     }
     // Lagre frame i PO, f.eks. i en std::vector
 
-    setStaticOutputData<Image>(0, output);
+    //setStaticOutputData<Image>(0, output);
+    setStaticOutputData<Image>(0, frame);
 
     frameList.push_back(frame);
 
