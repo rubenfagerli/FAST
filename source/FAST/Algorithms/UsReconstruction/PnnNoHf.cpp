@@ -44,12 +44,116 @@ Vector3f getImagePlaneNormal(Image::pointer frame){
     return imagePlaneNormal;
 }
 
+Vector3i getImageComponentVector(Image::pointer frame, int x, int y){
+    AffineTransformation::pointer imageTransformation = SceneGraph::getAffineTransformationFromData(frame);
+    Vector3f x0 = imageTransformation->multiply(Vector3f(0, 0, 0));
+    Vector3f x1 = imageTransformation->multiply(Vector3f(x, y, 0));
+    Vector3f comp = (x1 - x0);
+    Vector3i offset = Vector3i(comp(0), comp(1), comp(2));
+    return offset;
+    //TODO fix  Vector3f(1,1,0)-Vector3f(0,0,0) multiplies?
+}
+
+Vector3f PnnNoHf::getFramePointPosition(Image::pointer frame, int x, int y){
+    AffineTransformation::pointer imageTransformation = SceneGraph::getAffineTransformationFromData(frame);
+    Vector3f worldPos = imageTransformation->multiply(Vector3f(x, y, 0));
+    worldPos -= zeroPoints;
+    if (worldPos(0) > volumeSize(0) || worldPos(1) > volumeSize(1) || worldPos(2) > volumeSize(2)){
+        return Vector3f(0, 0, 0); //Occures sometimes! Should not! Increase size of volume? Or have to change something?
+    }
+    return worldPos; //TODO relate to zeroPoint
+}
+
+Vector3i getRoundedIntVector3f(Vector3f v){
+    return Vector3i(round(v(0)), round(v(1)), round(v(2)));
+}
+
+/*
+Fetches images close to a point in the world coordinate system
+* worldPoint: Point in world space
+# Return list of Image-pointers for relevant Image frames (has to include all relevant frames)
+*/
+std::vector<Image::pointer> PnnNoHf::getImagesAround(Vector3f worldPoint){
+    /*
+    std::vector<Image::pointer> framesToCheck = {};
+                if (last.isValid()){
+                    framesToCheck.push_back(last);
+                }
+                if (next.isValid()){
+                    framesToCheck.push_back(next);
+                }
+                framesToCheck.push_back(frame);
+    */
+    std::vector<Image::pointer> outputList = {};
+    //TODO actual implementation
+    return outputList;
+}
+
+/*
+Filters out images to only include those within the appropriate dfDom distance
+* neighbourFrames: List of Image-pointers for relevant Image frames (has to include all relevant frames)
+* domDir: the dominant direction of imagePlaneNormal (0:x, 1:y, 2:z) Direction to iterate over
+* worldPoint: Point in world space
+* dfDom: Distance to iterate over domDir in each direction
+# Return list of Image-pointers for relevant Image frames (has to include all relevant frames; but minimal number of images)
+*/
+void PnnNoHf::filterOutImagesByDfDom(std::vector<Image::pointer> neighbourFrames, int domDir, Vector3f worldPoint, float dfDom){
+    //TODO use neighbourFrames and remove frames outside of dfDom distance
+
+    //TODO make sure input "neighbourFrames" is affected outside afterwards, or change to returning that
+}
+
+/*
+Get distance from point worldPoint to plane neighFrame along the imagePlaneNormal
+* worldPoint: Point in world space
+* imagePlaneNormal: Normal vector from worldPoint
+* neighFrame: Image with transformed corners to be used for generating plane //TODO precalc planes for reuse?
+# Return (interpolated) pixelvalue
+*/
+float getNormalDistance(Vector3f worldPoint, Vector3f imagePlaneNormal, Image::pointer neighFrame){
+    float distance = 0.0;
+    //TODO PRIO implement needs just math
+    return distance;
+}
+
+/* 
+Sample from neighFrame the point at pointed at by worldPoint and imagePlaneNormal
+* worldPoint: Point in world space
+* imagePlaneNormal: Normal vector from worldPoint
+* neighFrame: Image with metadata(worldspace, corners etc) and pixelvalues to be sampled
+# Return (interpolated) pixelvalue
+*/
+float sampleAtNormal(Vector3f worldPoint, Vector3f imagePlaneNormal, Image::pointer neighFrame){
+    float pixelValue = 0.0;
+    //TODO implement sampling
+
+    return pixelValue;
+}
+
+void PnnNoHf::accumulateValue(Vector3i pointVoxelPos, float addValue, int channel){
+    /*
+    float oldP = volAccess->getScalar(pointVoxelPos, 0);
+    float oldW = volAccess->getScalar(pointVoxelPos, 1);
+    if (oldP < 0.0){ oldP = 0.0; } 
+    if (oldW < 0.0){ oldW = 0.0; }
+    float newP = oldP + p;
+    float newW = oldW + w;
+    volAccess->setScalar(pointVoxelPos, newP, 0);
+    volAccess->setScalar(pointVoxelPos, newW, 1);
+    */
+    float oldValue = volAccess->getScalar(pointVoxelPos, channel);
+    //if (oldValue < 0.0){ oldValue = 0.0; } // Hacky workaround from uninitialized cells
+    float newValue = oldValue + addValue;
+    volAccess->setScalar(pointVoxelPos, newValue, channel);
+}
+
 // CPU algoritme
 //template <class T>
 void PnnNoHf::executeAlgorithmOnHost(){//Image::pointer VoxelsValNWeight, Image::pointer output, std::vector<Image::pointer> frameList, float dv, float Rmax){
     //VoxelsValNWeight = Image::pointer::New();
     std::cout << "Started executing on host!" << std::endl;
-    /*ImageAccess::pointer volAccess = VoxelsValNWeight->getImageAccess(accessType::ACCESS_READ_WRITE);
+    volAccess = VoxelsValNWeight->getImageAccess(accessType::ACCESS_READ_WRITE);
+    /*
     for (int x = 0; x < 5; x++){
         for (int y = 0; y < 5; y++){
             for (int z = 0; z < 5; z++){
@@ -65,6 +169,8 @@ void PnnNoHf::executeAlgorithmOnHost(){//Image::pointer VoxelsValNWeight, Image:
         //zeroPoints
         // # Finn dominerende rettning #
         Vector3f imagePlaneNormal = getImagePlaneNormal(frame);
+        //Vector3f pointWorldPos = getFramePointPosition(frame, 40, 50);
+        //Vector3i pointVoxelPos = getRoundedIntVector3f(pointWorldPos);
         float domVal = fabs(imagePlaneNormal(0)); //TODO do we have to take ABS of value here? Does the + vs - direction matter?
         int domDir = 0;
         if (fabs(imagePlaneNormal(1)) > domVal){
@@ -89,6 +195,52 @@ void PnnNoHf::executeAlgorithmOnHost(){//Image::pointer VoxelsValNWeight, Image:
             next = frameList[i + 1]; 
         }
 
+        for (int x = 0; x < frame->getWidth(); x++){
+            for (int y = 0; y < frame->getHeight(); y++){
+                // ## Beregn world basert voxelposisjon til pixelen ##
+                Vector3f pointWorldPos = getFramePointPosition(frame, x, y); //Floating-point accuracy position
+                Vector3i pointVoxelPos = getRoundedIntVector3f(pointWorldPos); //Discrete integerbased position
+
+                // ## Find distance to last and next
+                float d1 = 1.2; float d2 = 1.4;
+
+                // ## Calculate df & dfz
+                float maxNeighDist = std::max(d1, d2);
+                float df = std::min(std::max(maxNeighDist, dv), Rmax);
+                float dfz = df / domVal; // TODO verify that deviding by domVal is correct (or 1/domval?) // Is domVal in range under 1 or over 1?
+
+                // ## Within dfz in each direction, find frames within this zone:
+                float zeroDom = pointWorldPos(domDir);
+                // Images = getImagesAround(pointWorldPos)
+                std::vector<Image::pointer> neighbourFrames = getImagesAround(pointWorldPos); //TODO eller skal vi bruke pointVoxelPos her og nedenfor?
+                // Images = filterOutImages(Images, domDir, zeroDom, dfz) #//float minDom = zeroDom - dfz; //float maxDom = zeroDom + dfz;
+                filterOutImagesByDfDom(neighbourFrames, domDir, pointWorldPos, dfz);
+                // TODO Store Images to reuse for next iteration (ie.use all accepted, or have a base with all frames close to this one based on 4 corners)
+                // For Img in Images:
+                for (Image::pointer neighFrame : neighbourFrames){
+                    // ? Find riktig sample/beam i rawdata ?? For no bruk pointWorldPos/pointVoxelPos
+                    // float d = getDistanceAtNormal(Point pointWorldPos, NormalVector imageNormal, Plane Img)
+                    float dist = getNormalDistance(pointWorldPos, imagePlaneNormal, neighFrame);
+                    // If ( d <= dfz ):
+                    if (dist <= dfz){
+                        /*ImageAccess::pointer nFrameAccess = neighFrame->getImageAccess(accessType::ACCESS_READ);
+                        float p = nFrameAccess->getScalar((x, y), 0); //TODO actually find closest
+                        float w = 1; // w = 1-d/df*/
+                        // float p = sampleAtNormal(Point pointWorldPos, NormalVector imageNormal, Plane Img)
+                        float p = sampleAtNormal(pointWorldPos, imagePlaneNormal, neighFrame);
+                        // float w = 1 - d/df
+                        float w = 1 - dist / df;
+                        // accumulate p's and w's
+                        accumulateValue(pointVoxelPos, p, 0);
+                        accumulateValue(pointVoxelPos, p, 1);
+                        //TODO further add 3rd component for time?
+                    }
+                }
+                    
+                
+            }
+        }
+        /*
         Vector3f baselocation = frame->getTransformedBoundingBox().getCorners().row(0); //corner 0 local values (0,0,0)
         Vector3f adjustedBaseLocation = baselocation - zeroPoints;
         int sizeA, sizeB;
@@ -167,7 +319,9 @@ void PnnNoHf::executeAlgorithmOnHost(){//Image::pointer VoxelsValNWeight, Image:
                 
             }
         }
+        */
     }
+    
     /*while (!frameList.empty()){
         Image::pointer frame = frameList.back();
         frameList.pop_back();
@@ -196,8 +350,8 @@ void PnnNoHf::executeAlgorithmOnHost(){//Image::pointer VoxelsValNWeight, Image:
     std::cout << "Volume reconstructed!" << std::endl;
     outAccess.release();
     volAccess.release();
-
-    //setStaticOutputData<Image>(0, output); //fails with this one?
+    
+    //setStaticOutputData<Image>(0, output); //fails with this one? //3D
     // MAKE 2D Image cut
     outAccess = output->getImageAccess(ACCESS_READ);
     Image::pointer outputImg = getStaticOutputData<Image>(0);
@@ -337,6 +491,7 @@ void PnnNoHf::initVolumeCube(Image::pointer rootFrame){
         // Find transform from rootFrame to normalized space
         // Use this transform to transform all frames
     // TO TRANSFORM: image->getSceneGraphNode()->setTransformation(transform), der transform er av typen AffineTransformation::pointer
+    /*
     // Calculate image plane normal
     AffineTransformation::pointer imageTransformation = SceneGraph::getAffineTransformationFromData(rootFrame);
     Vector3f p0 = imageTransformation->multiply(Vector3f(0, 0, 0));
@@ -354,6 +509,7 @@ void PnnNoHf::initVolumeCube(Image::pointer rootFrame){
     AffineTransformation systemTransformation = invTrans2; //AffineTransformation::New();
     //systemTransformation::AffineTransformation(invTrans2);
     AffineTransformation::pointer systemTransformation2 = SharedPointer<AffineTransformation>(systemTransformation);*/
+    AffineTransformation::pointer imageTransformation = SceneGraph::getAffineTransformationFromData(rootFrame);
     AffineTransformation::pointer inverseSystemTransform = imageTransformation->inverseTransform();
     Vector3f cornerBase = rootFrame->getBoundingBox().getCorners().row(0);
     Vector3f cornerTrans = rootFrame->getTransformedBoundingBox().getCorners().row(0);
@@ -369,13 +525,12 @@ void PnnNoHf::initVolumeCube(Image::pointer rootFrame){
     BoundingBox box = rootFrame->getTransformedBoundingBox();
     MatrixXf corners = box.getCorners();
     Vector3f corner = box.getCorners().row(0);
-    min[0] = corner[0]; //OR ()?
+    min[0] = corner[0]; //OR ()? TODO
     max[0] = corner[0];
     min[1] = corner[1];
     max[1] = corner[1];
     min[2] = corner[2];
     max[2] = corner[2];
-   
     
     for (int i = 0; i < frameList.size(); i++){
         Image::pointer img = frameList[i];
@@ -405,7 +560,7 @@ void PnnNoHf::initVolumeCube(Image::pointer rootFrame){
 
     // Init volume
     Vector3f size = max - min;
-    Vector3i volumeSize = Vector3i(ceil(size(0)), ceil(size(1)), ceil(size(2)));
+    volumeSize = Vector3i(ceil(size(0)), ceil(size(1)), ceil(size(2)));
     zeroPoints = min;
     DataType type = DataType::TYPE_FLOAT; //TYPE_INT8; //frame->getDataType();
     float initVal = 0.0;
@@ -545,6 +700,7 @@ void PnnNoHf::execute() {
             volumeInitialized = true;
             //Definer dv (oppløsning)
             dv = 1;
+            // TODO initialize frame indexing!!! TODO
         }
         executeAlgorithmOnHost();// VoxelsValNWeight, output, frameList, dv, Rmax);
         /*switch (frame->getDataType()) {
@@ -553,7 +709,7 @@ void PnnNoHf::execute() {
     }
     /*else{// if (dynamicImage->getSize() == 0){
     std::cout << "DynImg size" << dynamicImage->getSize() << std::endl;
-    }*/
+    }
     //getInputData(0);//getStaticInputData<Image>(0);
     /*if (input->getDimension() != 2){
     throw Exception("The algorithm only handles 2D image input");
@@ -570,7 +726,7 @@ void PnnNoHf::execute() {
     switch (input->getDataType()) {
     fastSwitchTypeMacro(executeAlgorithmOnHost<FAST_TYPE>(input, output, mMask, maskSize));
     }
-    }*/
+    }
 
     /*
     char maskSize = mMaskSize;

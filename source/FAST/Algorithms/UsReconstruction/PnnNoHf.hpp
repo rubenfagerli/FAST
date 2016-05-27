@@ -19,6 +19,10 @@ class PnnNoHf : public ProcessObject {
         void execute();
         void waitToFinish();
         void initVolumeCube(Image::pointer input);
+        std::vector<Image::pointer> getImagesAround(Vector3f worldPoint);
+        void filterOutImagesByDfDom(std::vector<Image::pointer> neighbourFrames, int domDir, Vector3f worldPoint, float dfDom);
+        void accumulateValue(Vector3i pointVoxelPos, float addValue, int channel);
+        Vector3f getFramePointPosition(Image::pointer frame, int x, int y);
         void executeAlgorithmOnHost();
         //void createMask(Image::pointer input, uchar maskSize, bool useSeperableFilter);
         //void recompileOpenCLCode(Image::pointer input);
@@ -37,7 +41,9 @@ class PnnNoHf : public ProcessObject {
         float * VoxelValues;
         float * VoxelWeights;
         Vector3f zeroPoints;
-        Vector3f volumeSize;
+        Vector3i volumeSize;
+
+        ImageAccess::pointer volAccess;
 
 
         cl::Buffer mCLMask;
