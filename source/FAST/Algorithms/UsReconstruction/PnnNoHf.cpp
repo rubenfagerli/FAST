@@ -22,10 +22,13 @@ PnnNoHf::PnnNoHf(){
     //volume;
     dv = 1.0;
     Rmax = 3.0; //2?
+    volumeCalculated = false;
     volumeInitialized = false;
     firstFrameNotSet = true;
+    reachedEndOfStream = false;
     frameList = {};
     //frameList.capacity = 1000;
+    iterartorCounter = 0;
 }
 
 PnnNoHf::~PnnNoHf(){
@@ -59,6 +62,19 @@ Vector3f PnnNoHf::getFramePointPosition(Image::pointer frame, int x, int y){
     Vector3f worldPos = imageTransformation->multiply(Vector3f(x, y, 0));
     worldPos -= zeroPoints;
     if (worldPos(0) > volumeSize(0) || worldPos(1) > volumeSize(1) || worldPos(2) > volumeSize(2)){
+        BoundingBox box = frame->getTransformedBoundingBox();
+        MatrixXf corners = box.getCorners();
+        Vector3f corner0 = corners.row(0);
+        Vector3f corner1 = corners.row(1);
+        Vector3f corner2 = corners.row(2);
+        Vector3f corner3 = corners.row(3);
+        Vector3f corner4 = corners.row(4);
+        Vector3f corner5 = corners.row(5);
+        Vector3f corner6 = corners.row(6);
+        Vector3f corner7 = corners.row(7);
+        Vector3f worldPosZero = imageTransformation->multiply(Vector3f(0, 0, 0));
+        Vector3f worldPosMax = imageTransformation->multiply(Vector3f(frame->getWidth(), frame->getHeight(), 0));
+        //Vector3f worldPos2 = Vector3f(x, y, 0)->
         return Vector3f(0, 0, 0); //Occures sometimes! Should not! Increase size of volume? Or have to change something?
     }
     return worldPos; //TODO relate to zeroPoint
@@ -354,7 +370,7 @@ void PnnNoHf::executeAlgorithmOnHost(){//Image::pointer VoxelsValNWeight, Image:
     //setStaticOutputData<Image>(0, output); //fails with this one? //3D
     // MAKE 2D Image cut
     outAccess = output->getImageAccess(ACCESS_READ);
-    Image::pointer outputImg = getStaticOutputData<Image>(0);
+    outputImg = getStaticOutputData<Image>(0);
     Vector3ui outputImgSize = output->getSize(); //Vector3i(output->getHeight(), output->getWidth(),1);
     outputImgSize(2) = 1;
     outputImg->create(outputImgSize, VoxelsValNWeight->getDataType(), 1);
@@ -369,7 +385,7 @@ void PnnNoHf::executeAlgorithmOnHost(){//Image::pointer VoxelsValNWeight, Image:
     }
     outAccess.release();
     outImgAccess.release();
-    setStaticOutputData<Image>(0, outputImg); //2D
+    //setStaticOutputData<Image>(0, outputImg); //2D
     // MAKE 2D Image END
     std::cout << "Execute method finished succesfully!" << std::endl;
 }
@@ -597,7 +613,44 @@ void PnnNoHf::initVolumeCube(Image::pointer rootFrame){
     int drrrrrrrr = 1;
 }
 
-void PnnNoHf::execute() {
+void PnnNoHf::execute(){ 
+    if (!reachedEndOfStream){
+        std::cout << "Iteration #:" << iterartorCounter++ << std::endl;
+        Image::pointer frame = getStaticInputData<Image>(0);
+        frameList.push_back(frame);
+        if (firstFrameNotSet){
+            firstFrame = frame;
+            firstFrameNotSet = false;
+        }
+        // Sjekk om vi har nådd slutten
+        DynamicData::pointer dynamicImage = getInputData(0);
+        if (dynamicImage->hasReachedEnd()) {
+            reachedEndOfStream = true;
+        }
+        setStaticOutputData<Image>(0, frame);
+    }
+    // When we have reached the end of stream we do just from here on
+    if (reachedEndOfStream) {
+        std::cout << "END Iteration #:" << iterartorCounter++ << std::endl;
+        if (!volumeCalculated){
+            if (!volumeInitialized){
+                std::cout << "Nr of frames in frameList:" << frameList.size() << std::endl;
+                std::cout << "INITIALIZING volume" << std::endl;
+                //Init cube with all corners
+                initVolumeCube(firstFrame);
+                volumeInitialized = true;
+                //Definer dv (oppløsning)
+                dv = 1;
+                outputImg = firstFrame;
+            }
+            //if use GPU else :
+            executeAlgorithmOnHost();
+        }
+        setStaticOutputData<Image>(0, outputImg);
+    }
+}
+/*
+void PnnNoHf::execute_OLD() { //old PnnNoHf function
     //Image::pointer input = getStaticInputData<Image>(0);
 
     Image::pointer frame = getStaticInputData<Image>(0);
@@ -632,7 +685,7 @@ void PnnNoHf::execute() {
         }
         switch (firstFrame->getDataType()) {
         fastSwitchTypeMacro(executeAlgorithmOnHost<FAST_TYPE>(firstFrame, output));
-        }*/
+        }*
 
         //output = firstFrame;
         /*IMAGE constructors
@@ -640,7 +693,7 @@ void PnnNoHf::execute() {
         void create(uint width, uint height, uint depth, DataType type, uint nrOfComponents);
         void create(VectorXui size, DataType type, uint nrOfComponents, ExecutionDevice::pointer device, const void * data);
         void create(uint width, uint height, uint depth, DataType type, uint nrOfComponents, ExecutionDevice::pointer device, const void * data);
-        */
+        *
         //frame->getNrOfComponents;
         //frame->getDataType();
         //Image::pointer output = getStaticOutputData<Image>();
@@ -705,7 +758,7 @@ void PnnNoHf::execute() {
         executeAlgorithmOnHost();// VoxelsValNWeight, output, frameList, dv, Rmax);
         /*switch (frame->getDataType()) {
         fastSwitchTypeMacro(executeAlgorithmOnHost<FAST_TYPE>(VoxelsValNWeight, output, frameList, dv, Rmax));
-        }*/
+        }*
     }
     /*else{// if (dynamicImage->getSize() == 0){
     std::cout << "DynImg size" << dynamicImage->getSize() << std::endl;
@@ -713,7 +766,7 @@ void PnnNoHf::execute() {
     //getInputData(0);//getStaticInputData<Image>(0);
     /*if (input->getDimension() != 2){
     throw Exception("The algorithm only handles 2D image input");
-    }*/
+    }*
     //if (dynamicImage->)
 
     return;
@@ -836,9 +889,9 @@ void PnnNoHf::execute() {
 
 
     }
-    }*/
+    }*
 }
-
+*/
 void PnnNoHf::waitToFinish() {
     if (!getMainDevice()->isHost()) {
         OpenCLDevice::pointer device = getMainDevice();

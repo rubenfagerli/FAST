@@ -31,10 +31,13 @@ class PnnNoHf : public ProcessObject {
         //float mStdDev;
         float dv; //resolution?
         float Rmax;
+        bool volumeCalculated;
         bool volumeInitialized;
         Image::pointer firstFrame;
         Image::pointer output;
+        Image::pointer outputImg;
         bool firstFrameNotSet;
+        bool reachedEndOfStream;
         
         std::vector<Image::pointer> frameList;
         Image::pointer VoxelsValNWeight;
@@ -44,6 +47,8 @@ class PnnNoHf : public ProcessObject {
         Vector3i volumeSize;
 
         ImageAccess::pointer volAccess;
+
+        int iterartorCounter;
 
 
         cl::Buffer mCLMask;

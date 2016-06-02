@@ -57,6 +57,6 @@ int main() {
     window->addRenderer(imageRenderer); //volumeRenderer);//renderer);
     //window->setMaximumFramerate(10); //unngå at buffer går tomt?
     //window->set2DMode();
-    window->setTimeout(60*1000); // automatically close window after 5 seconds
+    window->setTimeout(5*1000); // automatically close window after 5 seconds
     window->start();
 }
