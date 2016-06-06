@@ -261,7 +261,11 @@ float getPointDistanceAlongNormal(Vector3i A, Vector3f B, Vector3f normal){
     // |(B-A).dot(normal)|
     // TODO check maths is performed correctly
     //float distance = Vector3f((B - A).dot(normal)).norm();
-    float distance = fabs((B - A).dot(normal));
+    Vector3f Af = Vector3f(A(0), A(1), A(2));
+    Vector3f diff = (B - Af);
+    //Vector3f diff = Vector3f()
+    float prod = diff.dot(normal);
+    float distance = fabs(prod); //fabs((B - A).dot(normal));
     return distance;
 }
 
@@ -291,12 +295,20 @@ void PnnNoHf::accumulateValue(Vector3i pointVoxelPos, float addValue, int channe
     float newValue = oldValue + addValue;
     volAccess->setScalar(pointVoxelPos, newValue, channel);
 }
+//float d1 = getDistanceAlongNormal(basePoint, imagePlaneNormal, lastFrameRootPoint, lastFrameNormal);
+float getDistanceAlongNormal(Vector3f point, Vector3f normal, Vector3f planePoint, Vector3f planeNormal){
+    return 0.0;
+}
+//Vector3f intersectionPointWorld = getIntersectionOfPlane(volumePoint, thisFrameRootPoint, imagePlaneNormal);
+//Vector3f intersectionPointLocal = getLocalIntersectionOfPlane();
+//if (intersectionWithinFrame(frame, intersectionPointLocal))
+//float p = getPixelValue(frameAccess, intersectionPointLocal);
 
 void PnnNoHf::executeAlgorithmOnHost(){ //TODO rename to Us3Dhybrid eller finn bedre navn
     //Get access to volume on which we accumulate the values in
     // (volAccess is defined globally in Us3Dhybrid as an ImageAccess::pointer)
     volAccess = AccumulationVolume->getImageAccess(accessType::ACCESS_READ_WRITE);
-    Vector3i volumeSize = AccumulationVolume->getSize(); //TODO implement proper //Todo make global?
+    Vector3ui volumeSize = AccumulationVolume->getSize(); //TODO implement proper //Todo make global?
     // For each FRAME
     for (int frameNr = 0; frameNr < frameList.size(); frameNr++){
         // Get FRAME
@@ -315,6 +327,11 @@ void PnnNoHf::executeAlgorithmOnHost(){ //TODO rename to Us3Dhybrid eller finn b
         // # lastFrameRootPoint, lastFrameNormal
         // # nextFrameRootPoint, nextFrameNormal
         // TODO fix storage and fetching of these
+        Vector3f thisFrameRootPoint = Vector3f(0, 0, 0);
+        Vector3f lastFrameRootPoint = Vector3f(0, 0, 0);
+        Vector3f lastFrameNormal = Vector3f(0, 0, 0);
+        Vector3f nextFrameRootPoint = Vector3f(0, 0, 0);
+        Vector3f nextFrameNormal = Vector3f(0, 0, 0);
 
         // Get frame access
         ImageAccess::pointer frameAccess = frame->getImageAccess(accessType::ACCESS_READ);
@@ -337,11 +354,12 @@ void PnnNoHf::executeAlgorithmOnHost(){ //TODO rename to Us3Dhybrid eller finn b
                 float dfDom = df / domVal;
 
                 //Indeks for c-dir range in domDir
-                Vector2i cDirRange = getDomDirRange(basePoint, domDir, dfDom, volumeSize);
+                /*Vector2i cDirRange = getDomDirRange(basePoint, domDir, dfDom, volumeSize);
                 //For hver c i c-dir
                 for (int c = cDirRange(0); c <= cDirRange(1); c++){
                     Vector3i volumePoint = getVolumePointLocation(a, b, c, domDir);
-                    Vector3f intersectionPointWorld = getIntersectionOfPlane(volumePoint, thisFrameRootPoint, imagePlaneNormal);
+                    //TODO implement
+                    /*Vector3f intersectionPointWorld = getIntersectionOfPlane(volumePoint, thisFrameRootPoint, imagePlaneNormal);
                     Vector3f intersectionPointLocal = getLocalIntersectionOfPlane(); //TODO from what?
                     if (intersectionWithinFrame(frame, intersectionPointLocal)){ //Or check through something else
                         // Calculate pixelvalue p and weight w
@@ -349,8 +367,8 @@ void PnnNoHf::executeAlgorithmOnHost(){ //TODO rename to Us3Dhybrid eller finn b
                         float distance = getPointDistanceAlongNormal(volumePoint, intersectionPointWorld, imagePlaneNormal);
                         float w = 1 - distance / df; //Or gaussian for trail
                         accumulateValuesInVolume(volumePoint, p, w);
-                    }
-                }
+                    }*
+                }*/
             }
         }
     }
@@ -648,6 +666,7 @@ void PnnNoHf::initVolume(Image::pointer rootFrame){ //TODO change name to Us3Dhy
         framePlaneNormalList.push_back(getImagePlaneNormal(frame));
     }
     //Transform all frames so that minimum corner is (0,0,0) //Just translate right?
+    /* // BIG TODO FIX THIS PART TODO TODO
     AffineTransformation::pointer transformToMinimum = getTransformationFromVector3f(minCoords); //TODO extract these to methods
     for (int i = 0; i < frameList.size(); i++){
         Image::pointer frame = frameList[i];
@@ -655,7 +674,7 @@ void PnnNoHf::initVolume(Image::pointer rootFrame){ //TODO change name to Us3Dhy
         AffineTransformation::pointer oldImgTransform = SceneGraph::getAffineTransformationFromData(frame);
         AffineTransformation::pointer newImgTransform = oldImgTransform->multiply(inverseSystemTransform); //TODO Change to translation !!!!!!!!!!!!!!!
         frame->getSceneGraphNode()->setTransformation(newImgTransform);
-    }
+    }*/
     //Init volume of size max-min in each direction x/y/z
     Vector3f size = maxCoords - minCoords;
     volumeSize = Vector3i(ceil(size(0)), ceil(size(1)), ceil(size(2)));
